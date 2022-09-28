@@ -4,7 +4,7 @@ from sepsis_labeler.component_base import Component
 
 class SuspectedInfectionComponent(Component):
 	'''
-	Class to get suspected infections from cohort.
+	Class to get suspected infections in cohort.
 	'''
 	def __init__(self, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -148,6 +148,7 @@ class SuspectedInfectionComponent(Component):
 class PlateletComponent(Component): 
 	'''
 	Class to get platelet count from cohort.
+	Units are 1000/uL
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -416,6 +417,102 @@ class GlasgowComaScaleComponent(Component):
 						admit_datetime,
 						MIN(value_as_number) as min_gcs
 					FROM gcs_window 
+					GROUP BY person_id, admit_date, admit_datetime
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class BilirubinComponent(Component): 
+	'''
+	Class to get bilirubin measurement from cohort.
+	Units are normalized to mg/dL
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_bilirubin}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from bilirubin_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH bilirubin_from_measurement AS (
+					SELECT 
+						measure.person_id, 
+						measure.measurement_DATETIME, 
+						value_as_number, 
+						concept.concept_name AS measure_type  
+					FROM {dataset_project}.{dataset}.measurement AS measure
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON measure.measurement_concept_id = concept.concept_id
+					WHERE concept.concept_id in (
+						SELECT
+							c.concept_id
+						FROM {dataset_project}.{dataset}.concept c
+						WHERE c.concept_id in (3024128, 4230543)
+						UNION DISTINCT
+						SELECT
+							c.concept_id
+						FROM {dataset_project}.{dataset}.concept c
+						INNER JOIN {dataset_project}.{dataset}.concept_ancestor ca
+						ON c.concept_id = ca.descendant_concept_id
+						AND ca.ancestor_concept_id in (3024128, 4230543)
+						AND c.invalid_reason is null
+					) AND measure.value_as_number IS NOT NULL AND measure.value_as_number > 0
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				bilirubin_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						bilirubin.measurement_DATETIME AS bilirubin_date, 
+						bilirubin.value_as_number,
+						datetime_diff(bilirubin.measurement_DATETIME, index_date, DAY) as days_bili_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN bilirubin_from_measurement AS bilirubin USING (person_id)
+					WHERE
+						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				bilirubin_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date,
+						admit_datetime,
+						MAX(value_as_number) as max_bilirubin
+					FROM bilirubin_window 
 					GROUP BY person_id, admit_date, admit_datetime
 				)
 				'''
