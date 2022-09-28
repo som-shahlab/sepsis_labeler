@@ -520,3 +520,86 @@ class BilirubinComponent(Component):
 			return query
 		else:
 			return query.format_map(self.config_dict)
+		
+class MechanicalVentilationComponent(Component): 
+	'''
+	Class to get mechanical ventilation measurement from cohort.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_vent}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from mech_vent_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH mech_vent_from_flowsheet AS (
+					SELECT 
+						person_id, 
+						observation_datetime, 
+						UPPER(display_name) as row_disp_name, 
+						meas_value, 
+						unit_value as units
+					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					where (upper(display_name) = 'VENT MODE' or upper(display_name) = 'VENTILATION MODE') and
+					(meas_value <> 'STANDBY' and meas_value <> 'MONITOR' and meas_value is not null)   
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				mech_vent_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						mech_vent.observation_datetime AS mech_vent_datetime, 
+						mech_vent.meas_value as vent_mode,
+						datetime_diff(mech_vent.observation_datetime, index_date, DAY) as days_mech_vent_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN mech_vent_from_flowsheet AS mech_vent USING (person_id)
+					WHERE
+						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(observation_datetime, INTERVAL 2 DAY) AS DATE) AND
+						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(observation_datetime, INTERVAL 1 DAY) AS DATE)
+					ORDER BY  person_id, admit_date, index_date, observation_datetime 
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				mech_vent_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date,
+						admit_datetime,
+						COUNT(vent_mode) as count_vent_mode
+					FROM mech_vent_window 
+					GROUP BY person_id, admit_date, admit_datetime
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
