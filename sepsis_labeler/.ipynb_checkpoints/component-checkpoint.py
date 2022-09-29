@@ -1037,8 +1037,7 @@ class SpO2FiO2Component(Component):
 		
 class VasopressorComponent(Component): 
 	'''
-	Class to get lactate measurement from cohort.
-	Units are normalized to mmol/L
+	Class to get vasopressor drug exposure from cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1046,11 +1045,11 @@ class VasopressorComponent(Component):
 	
 	def get_component_query(self, format_query=True):
 		query = '''
-				CREATE OR REPLACE TABLE `{sepsis_lactate}` AS
+				CREATE OR REPLACE TABLE `{sepsis_vasopressor}` AS
 				{values_query}
 				{window_query}
 				{rollup_query} 
-				select * from lactate_rollup
+				select * from vasopressor_rollup
 				'''
 		if not format_query:
 			pass
@@ -1132,6 +1131,89 @@ class VasopressorComponent(Component):
 						MAX(datetime_diff(vasopressor.drug_exposure_end_DATETIME, vasopressor.drug_exposure_start_DATETIME, DAY) + 1)
 					as max_vaso_days_prior
 					FROM vasopressor_window as vasopressor 
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class MeanArterialPressureComponent(Component): 
+	'''
+	Class to get MAP measurement from cohort.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_map}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from mean_arterial_pressure_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH mean_arterial_pressure_from_measurement AS (
+					SELECT 
+						measure.person_id, 
+						measure.measurement_DATETIME, 
+						measure.value_as_number, 
+						concept.concept_name AS measure_type 
+					FROM {dataset_project}.{dataset}.measurement AS measure
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON measure.measurement_concept_id = concept.concept_id
+					where measure.measurement_concept_id = 3027598 AND
+						measure.value_as_number IS NOT NULL AND measure.value_as_number >= 10
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				mean_arterial_pressure_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						mapm.measurement_DATETIME AS map_datetime,
+						mapm.value_as_number AS map,
+						datetime_diff(mapm.measurement_DATETIME, index_date, DAY) as days_map_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN mean_arterial_pressure_from_measurement as mapm
+						ON susp_inf_rollup.person_id = mapm.person_id
+					WHERE
+						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(mapm.measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(mapm.measurement_DATETIME, INTERVAL 1 DAY) AS DATE) 
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				mean_arterial_pressure_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						MIN(map) as min_map
+					FROM mean_arterial_pressure_window 
 					GROUP BY person_id, admit_date
 				)
 				'''
