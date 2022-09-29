@@ -603,3 +603,539 @@ class MechanicalVentilationComponent(Component):
 			return query
 		else:
 			return query.format_map(self.config_dict)
+
+class LactateComponent(Component): 
+	'''
+	Class to get lactate measurement from cohort.
+	Units are normalized to mmol/L
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_lactate}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from lactate_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH lactate_from_measurement AS (
+					SELECT 
+						measure.person_id, 
+						measure.measurement_DATETIME,
+						case
+							when unit_concept_id = 8840 then value_as_number * 9.0 -- mg/dL -> mmol/L
+							when unit_concept_id = 8837 then value_as_number / 0.001 * 9.0 -- ug/dL -> mmol/L
+							else value_as_number 
+						end as value_as_number,
+						concept.concept_name AS measure_type  
+					FROM {dataset_project}.{dataset}.measurement AS measure
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON measure.measurement_concept_id = concept.concept_id
+					WHERE concept.concept_id in(
+						SELECT
+							c.concept_id
+						FROM {dataset_project}.{dataset}.concept c
+						WHERE c.concept_id in (3047181, 40762125, 3014111, 3020138)
+						UNION DISTINCT
+						SELECT
+							c.concept_id
+						FROM {dataset_project}.{dataset}.concept c
+						INNER JOIN {dataset_project}.{dataset}.concept_ancestor ca
+						ON c.concept_id = ca.descendant_concept_id
+						AND ca.ancestor_concept_id in (3047181, 40762125, 3014111, 3020138)
+						AND c.invalid_reason is null
+					) AND measure.value_as_number IS NOT NULL AND measure.value_as_number > 0
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				lactate_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						lactate.measurement_DATETIME AS lactate_date, 
+						lactate.value_as_number,
+						datetime_diff(lactate.measurement_DATETIME, index_date, DAY) as days_lact_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN lactate_from_measurement AS lactate USING (person_id)
+					WHERE
+						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				lactate_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						admit_datetime, 
+						MAX(value_as_number) as max_lactate
+					FROM lactate_window 
+					GROUP BY person_id, admit_date, admit_datetime
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+		
+class PaO2FiO2Component(Component): 
+	'''
+	Class to get PaO2:FiO2 ratio measurement from cohort.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_pao2_fio2}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from paO2_fiO2_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH paO2_from_measurement AS (
+					SELECT 
+						measure.person_id, 
+						measure.measurement_DATETIME, 
+						measure.value_as_number, 
+						concept.concept_name AS measure_type  
+					FROM {dataset_project}.{dataset}.measurement AS measure
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON measure.measurement_concept_id = concept.concept_id
+					WHERE concept.concept_id=3027801 AND value_as_number IS NOT NULL
+				),
+				fiO2_vals as (
+					SELECT 
+						person_id, 
+						observation_datetime, 
+						UPPER(display_name) as row_disp_name, 
+						SAFE_CAST(meas_value as float64) as meas_value, 
+						unit_value as units
+					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					where (upper(display_name) = 'FIO2 (%)' or (upper(display_name) = 'FIO2 %' and upper(source_display_name) = 'RN CLINICAL SCREENING'))
+						  and meas_value is not null
+				),
+				fiO2_from_flowsheet AS (
+					select 
+						person_id, 
+						observation_datetime, 
+						row_disp_name,
+						case 
+							when meas_value > 1 then meas_value / 100
+							else meas_value
+						end as fiO2,
+						units
+					from fiO2_vals
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				paO2_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						paO2.measurement_DATETIME AS paO2_datetime, 
+						paO2.value_as_number as paO2,
+						datetime_diff(paO2.measurement_DATETIME, index_date, DAY) as days_paO2_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN paO2_from_measurement AS paO2
+					USING (person_id)
+					WHERE
+						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)
+				),
+				fiO2_window AS ( 
+					SELECT 
+						susp_inf_rollup.person_id, 
+						min_bc, 
+						min_systemic_abx, 
+						susp_inf_rollup.admit_date, 
+						index_date, 
+						CAST(observation_datetime AS DATETIME) AS fiO2_datetime, 
+						fiO2, 
+						datetime_diff(CAST(observation_datetime AS DATETIME), index_date, DAY) as days_fiO2_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN fiO2_from_flowsheet as flowsheet
+					ON susp_inf_rollup.person_id = flowsheet.person_id
+					WHERE
+					CAST(index_date AS DATE) >= CAST(DATETIME_SUB(CAST(observation_datetime AS DATETIME), INTERVAL 2 DAY) AS DATE) AND
+					CAST(index_date As DATE) <= CAST(DATETIME_ADD(CAST(observation_datetime AS DATETIME), INTERVAL 1 DAY) AS DATE) AND
+					fiO2 >=0.21 AND fiO2 <=1.0
+				),
+				paO2_fiO2_window AS (
+					SELECT 
+						paO2_window.person_id, 
+						paO2_window.admit_date, 
+						paO2_window.index_date, 
+						fiO2, 
+						fiO2_datetime, 
+						paO2, 
+						paO2_datetime,  
+						paO2/(NULLIF(fiO2, 0)) AS paO2fiO2_ratio, 
+						datetime_diff(paO2_datetime, fiO2_datetime, MINUTE) as minutes_fiO2_paO2
+					FROM fiO2_window AS fiO2_window
+					INNER JOIN paO2_window AS paO2_window
+					USING (person_id, index_date)
+					WHERE CAST(fiO2_datetime AS DATETIME)<= paO2_datetime 
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				paO2_fiO2_initial_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						paO2_datetime, 
+						MIN(minutes_fiO2_paO2) As minutes_fiO2_paO2 
+					FROM paO2_fiO2_window 
+					GROUP BY person_id, admit_date, paO2_datetime
+				),
+				paO2_fiO2_initial_rollup_join AS (
+					SELECT 
+						initial_rollup.person_id, 
+						initial_rollup.admit_date, 
+						initial_rollup.paO2_datetime, 
+						initial_rollup.minutes_fiO2_paO2,
+						index_date, 
+						fiO2, fiO2_datetime, paO2, paO2fiO2_ratio
+					FROM paO2_fiO2_initial_rollup AS initial_rollup
+					LEFT JOIN paO2_fiO2_window AS combined_window
+					USING (person_id, paO2_datetime, minutes_fiO2_paO2)
+				),
+				paO2_fiO2_rollup AS (
+					SELECT 
+						person_id, 
+						CAST(admit_date AS DATE) as admit_date, 
+						MIN(paO2fiO2_ratio) as min_paO2fiO2_ratio
+					FROM paO2_fiO2_initial_rollup_join 
+					WHERE minutes_fiO2_paO2 <= 24*60
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class SpO2FiO2Component(Component): 
+	'''
+	Class to get SpO2:FiO2 measurement ratio from cohort.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_spo2_fio2}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from spO2_fiO2_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH spO2_from_flowsheet AS (
+					SELECT 
+						person_id, 
+						observation_datetime, 
+						UPPER(display_name) as row_disp_name, 
+						SAFE_CAST(meas_value as float64) as meas_value, 
+						unit_value as units
+					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					where ((upper(display_name) = 'OXYGEN SATURATION' AND upper(source_display_name) = 'SPO2') 
+					or (upper(display_name) like 'SPO2 - %' and upper(source_display_name) = 'DEVICES TESTING TEMPLATE'))
+					and meas_value is not null
+				),
+				fiO2_vals as (
+					SELECT 
+						person_id, 
+						observation_datetime, 
+						UPPER(display_name) as row_disp_name, 
+						SAFE_CAST(meas_value as float64) as meas_value, 
+						unit_value as units
+					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					where (upper(display_name) = 'FIO2 (%)' or (upper(display_name) = 'FIO2 %' and upper(source_display_name) = 'RN CLINICAL SCREENING'))
+						  and meas_value is not null
+				),
+				fiO2_from_flowsheet AS (
+					select 
+						person_id, 
+						observation_datetime, 
+						row_disp_name,
+						case 
+							when meas_value > 1 then meas_value / 100
+							else meas_value
+						end as fiO2,
+						units
+					from fiO2_vals
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				spO2_window AS ( 
+					SELECT 
+						susp_inf_rollup.person_id, 
+						min_bc, 
+						min_systemic_abx, 
+						susp_inf_rollup.admit_date, 
+						index_date, 
+						CAST(observation_datetime AS DATETIME) AS spO2_datetime, 
+						meas_value as spO2, 
+						datetime_diff(CAST(observation_datetime AS DATETIME), index_date, DAY) as days_spO2_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN spO2_from_flowsheet as flowsheet
+					ON susp_inf_rollup.person_id = flowsheet.person_id
+					WHERE
+					CAST(index_date AS DATE) >= CAST(DATETIME_SUB(CAST(observation_datetime AS DATETIME), INTERVAL 2 DAY) AS DATE) AND
+					CAST(index_date As DATE) <= CAST(DATETIME_ADD(CAST(observation_datetime AS DATETIME), INTERVAL 1 DAY) AS DATE) AND
+					meas_value >0 AND meas_value <=100
+				),
+				fiO2_window AS ( 
+					SELECT 
+						susp_inf_rollup.person_id, 
+						min_bc, 
+						min_systemic_abx, 
+						susp_inf_rollup.admit_date, 
+						index_date, 
+						CAST(observation_datetime AS DATETIME) AS fiO2_datetime, 
+						fiO2, 
+						datetime_diff(CAST(observation_datetime AS DATETIME), index_date, DAY) as days_fiO2_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN fiO2_from_flowsheet as flowsheet
+					ON susp_inf_rollup.person_id = flowsheet.person_id
+					WHERE
+					CAST(index_date AS DATE) >= CAST(DATETIME_SUB(CAST(observation_datetime AS DATETIME), INTERVAL 2 DAY) AS DATE) AND
+					CAST(index_date As DATE) <= CAST(DATETIME_ADD(CAST(observation_datetime AS DATETIME), INTERVAL 1 DAY) AS DATE) AND
+					fiO2 >=0.21 AND fiO2 <=1.0
+				),
+				spO2_fiO2_window AS (
+					SELECT 
+						spO2_window.person_id, 
+						spO2_window.admit_date, 
+						spO2_window.index_date, 
+						fiO2, 
+						fiO2_datetime, 
+						spO2, 
+						spO2_datetime,  
+						spO2/(NULLIF(fiO2, 0)) AS spO2fiO2_ratio, 
+						datetime_diff(spO2_datetime, fiO2_datetime, MINUTE) as minutes_fiO2_spO2
+					FROM fiO2_window AS fiO2_window
+					INNER JOIN spO2_window AS spO2_window
+					USING (person_id, index_date)
+					WHERE CAST(fiO2_datetime AS DATETIME)<= spO2_datetime 
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				spO2_fiO2_initial_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						spO2_datetime, 
+						MIN(minutes_fiO2_spO2) As minutes_fiO2_spO2 
+					FROM spO2_fiO2_window 
+					GROUP BY person_id, admit_date, spO2_datetime
+				),
+				spO2_fiO2_initial_rollup_join AS (
+					SELECT 
+						initial_rollup.person_id, 
+						initial_rollup.admit_date, 
+						initial_rollup.spO2_datetime, 
+						initial_rollup.minutes_fiO2_spO2,
+						index_date, 
+						fiO2, 
+						fiO2_datetime, 
+						spO2, 
+						spO2fiO2_ratio
+					FROM spO2_fiO2_initial_rollup AS initial_rollup
+					LEFT JOIN spO2_fiO2_window AS combined_window
+					USING (person_id, spO2_datetime, minutes_fiO2_spO2)
+				),
+				spO2_fiO2_rollup AS (
+					SELECT
+						person_id, 
+						CAST(admit_date AS DATE) as admit_date, 
+						MIN(spO2fiO2_ratio) as min_spO2fiO2_ratio
+					FROM spO2_fiO2_initial_rollup_join 
+					WHERE minutes_fiO2_spO2 <= 24*60
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+		
+class VasopressorComponent(Component): 
+	'''
+	Class to get lactate measurement from cohort.
+	Units are normalized to mmol/L
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_lactate}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from lactate_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH vasopressor_list AS (
+					SELECT 
+						descendant_concept_id AS concept_id
+					FROM {dataset_project}.{dataset}.concept_ancestor
+					WHERE ancestor_concept_id IN (21600284, 21600287, 21600303, 21600283, 21600308)
+				),
+				vasopressor_from_drug_exposure_via_ancestor AS ( 
+					SELECT *
+					FROM {dataset_project}.{dataset}.drug_exposure AS drug
+					WHERE drug.drug_concept_id IN (
+						SELECT concept_id
+						FROM vasopressor_list
+					)
+				),
+				vasopressor_from_drug_exposure_with_name AS (
+					SELECT 
+						vasopressor.*, 
+						concept.concept_name AS vasopressor_type  
+					FROM vassopressor_from_drug_exposure_via_ancestor AS vasopressor
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON vsaopressor.drug_concept_id = concept.concept_id
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				vasopressor_window AS (
+					SELECT 
+						susp_inf_rollup.person_id, 
+						susp_inf_rollup.admit_date, 
+						susp_inf_rollup.index_date,
+						vasopressor.drug_exposure_start_DATETIME, 
+						vasopressor.drug_exposure_end_DATETIME,
+						datetime_diff(vasopressor.drug_exposure_start_DATETIME, index_date, DAY) as days_index_vasostart,
+						datetime_diff(vasopressor.drug_exposure_end_DATETIME, index_date, DAY) as days_index_vasoend,
+						(datetime_diff(vasopressor.drug_exposure_end_DATETIME, vasopressor.drug_exposure_start_DATETIME, DAY) + 1) as days_vasopressor
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN vasopressor_from_drug_exposure_with_name AS vasopressor
+					USING (person_id)
+					WHERE
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 3 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 4 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 5 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 6 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 7 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 8 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 9 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+						DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE)
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				vasopressor_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						MAX(datetime_diff(vasopressor.drug_exposure_end_DATETIME, vasopressor.drug_exposure_start_DATETIME, DAY) + 1)
+					as max_vaso_days_prior
+					FROM vasopressor_window as vasopressor 
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
