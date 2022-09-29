@@ -147,7 +147,7 @@ class SuspectedInfectionComponent(Component):
 
 class PlateletComponent(Component): 
 	'''
-	Class to get platelet count from cohort.
+	Class to get platelet count for cohort.
 	Units are 1000/uL
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -244,7 +244,7 @@ class PlateletComponent(Component):
 
 class CreatinineComponent(Component): 
 	'''
-	Class to get creatinine measurement from cohort.
+	Class to get creatinine measurement for cohort.
 	Units are normalized to mg/dL
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -345,7 +345,7 @@ class CreatinineComponent(Component):
 
 class GlasgowComaScaleComponent(Component): 
 	'''
-	Class to get glasgow coma scale score measurement from cohort.
+	Class to get glasgow coma scale score measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -427,7 +427,7 @@ class GlasgowComaScaleComponent(Component):
 
 class BilirubinComponent(Component): 
 	'''
-	Class to get bilirubin measurement from cohort.
+	Class to get bilirubin measurement for cohort.
 	Units are normalized to mg/dL
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -523,7 +523,7 @@ class BilirubinComponent(Component):
 		
 class MechanicalVentilationComponent(Component): 
 	'''
-	Class to get mechanical ventilation measurement from cohort.
+	Class to get mechanical ventilation measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -606,7 +606,7 @@ class MechanicalVentilationComponent(Component):
 
 class LactateComponent(Component): 
 	'''
-	Class to get lactate measurement from cohort.
+	Class to get lactate measurement for cohort.
 	Units are normalized to mmol/L
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -706,7 +706,7 @@ class LactateComponent(Component):
 		
 class PaO2FiO2Component(Component): 
 	'''
-	Class to get PaO2:FiO2 ratio measurement from cohort.
+	Class to get PaO2:FiO2 ratio measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -867,7 +867,7 @@ class PaO2FiO2Component(Component):
 
 class SpO2FiO2Component(Component): 
 	'''
-	Class to get SpO2:FiO2 measurement ratio from cohort.
+	Class to get SpO2:FiO2 measurement ratio for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1037,7 +1037,7 @@ class SpO2FiO2Component(Component):
 		
 class VasopressorComponent(Component): 
 	'''
-	Class to get vasopressor drug exposure from cohort.
+	Class to get vasopressor drug exposure for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1141,7 +1141,7 @@ class VasopressorComponent(Component):
 
 class MeanArterialPressureComponent(Component): 
 	'''
-	Class to get MAP measurement from cohort.
+	Class to get MAP measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1214,6 +1214,152 @@ class MeanArterialPressureComponent(Component):
 						admit_date, 
 						MIN(map) as min_map
 					FROM mean_arterial_pressure_window 
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class UrineComponent(Component): 
+	'''
+	Class to get urine measurement for cohort.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_urine}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from urine_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH urine_from_measurement AS (
+					SELECT 
+						measure.person_id, 
+						measure.measurement_DATETIME,
+						measure.value_as_number, 
+						concept.concept_name AS measure_type 
+					FROM {dataset_project}.{dataset}.measurement measure
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON measure.measurement_concept_id = concept.concept_id
+					where measurement_concept_id = 45876241 and measure.value_as_number >= 0 and measure.value_as_number IS NOT NULL
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				urine_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						urine.measurement_DATETIME AS urine_datetime, 
+						urine.value_as_number AS urine_volume,
+						datetime_diff(measurement_DATETIME, index_date, DAY) as days_urine_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN urine_from_measurement as urine
+						ON susp_inf_rollup.person_id = urine.person_id 
+					WHERE
+						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+						CAST(index_date As DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE) 
+					ORDER BY person_id, admit_date, measurement_DATETIME
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				urine_initial_rollup AS (
+					(
+						SELECT 
+							person_id, 
+							admit_date, 
+							discharge_date, 
+							CAST(urine_datetime AS DATE) AS urine_date, 
+							SUM(urine_volume) as urine_daily_output_orig, 
+							SUM(urine_volume) as urine_daily_output_adj,
+							ext_urine_datetime, 
+							adjust_hours
+						FROM urine_window 
+						LEFT JOIN admit_time USING (person_id)
+						WHERE CAST(urine_datetime AS DATE) <> CAST(admit_date AS DATE) AND CAST(urine_datetime AS DATE) <> CAST (discharge_date AS DATE)
+						GROUP BY person_id, admit_date, discharge_date, CAST (urine_datetime AS DATE), ext_urine_datetime, adjust_hours 
+					)
+					UNION ALL
+					(
+						SELECT 
+							person_id, 
+							admit_date, 
+							discharge_date, 
+							CAST(urine_datetime AS DATE) AS urine_date, 
+							SUM(urine_volume) as urine_daily_output_orig, 
+							(SUM(urine_volume))*24/adjust_hours as urine_daily_output_adj,
+							ext_urine_datetime, 
+							adjust_hours
+						FROM urine_window 
+						LEFT JOIN admit_time USING (person_id)
+						WHERE CAST(urine_datetime AS DATE) = CAST(admit_date AS DATE) 
+						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
+					)
+					UNION ALL
+					(
+						SELECT 
+							person_id, 
+							admit_date, 
+							discharge_date, 
+							CAST(urine_datetime AS DATE) AS urine_date, 
+							SUM(urine_volume) as urine_daily_output_orig, (SUM(urine_volume))*24/adjust_hours as urine_daily_output_adj,
+							ext_urine_datetime, 
+							adjust_hours
+						FROM urine_window 
+						LEFT JOIN discharge_time USING (person_id)
+						WHERE CAST(urine_datetime AS DATE) = CAST(discharge_date AS DATE) AND adjust_hours <> 0 
+						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
+					)
+					UNION ALL # THIS LAST BIT DEALS WITH DISCHARGE AT 0:00:00 HOURS
+					(
+						SELECT 
+							person_id, 
+							admit_date, 
+							discharge_date, 
+							CAST(urine_datetime AS DATE) AS urine_date, 
+							SUM(urine_volume) as urine_daily_output_orig, (SUM(urine_volume))*24 as urine_daily_output_adj,
+							ext_urine_datetime, 
+							adjust_hours
+						FROM urine_window 
+						LEFT JOIN discharge_time USING (person_id)
+						WHERE CAST(urine_datetime AS DATE) = CAST(discharge_date AS DATE) AND adjust_hours = 0 
+						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
+					)
+				),
+				urinE_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						Min(urine_daily_output_adj) as min_urine_daily
+					FROM urine_output_initial_rollup 
 					GROUP BY person_id, admit_date
 				)
 				'''

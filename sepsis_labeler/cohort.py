@@ -1,6 +1,6 @@
 from prediction_utils.cohorts.cohort import BQCohort
 
-class SepsisCohort(BQCohort):
+class SepsisAdmissionCohort(BQCohort):
 	'''
 	Class to get the sepsis admission cohort from OMOP schema.
 	Note: Optional, can specify pre-existing admission rollup in labeler arguments.

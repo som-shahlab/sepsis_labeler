@@ -147,7 +147,7 @@ class SuspectedInfectionComponent(Component):
 
 class PlateletComponent(Component): 
 	'''
-	Class to get platelet count from cohort.
+	Class to get platelet count for cohort.
 	Units are 1000/uL
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -244,7 +244,7 @@ class PlateletComponent(Component):
 
 class CreatinineComponent(Component): 
 	'''
-	Class to get creatinine measurement from cohort.
+	Class to get creatinine measurement for cohort.
 	Units are normalized to mg/dL
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -345,7 +345,7 @@ class CreatinineComponent(Component):
 
 class GlasgowComaScaleComponent(Component): 
 	'''
-	Class to get glasgow coma scale score measurement from cohort.
+	Class to get glasgow coma scale score measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -427,7 +427,7 @@ class GlasgowComaScaleComponent(Component):
 
 class BilirubinComponent(Component): 
 	'''
-	Class to get bilirubin measurement from cohort.
+	Class to get bilirubin measurement for cohort.
 	Units are normalized to mg/dL
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -523,7 +523,7 @@ class BilirubinComponent(Component):
 		
 class MechanicalVentilationComponent(Component): 
 	'''
-	Class to get mechanical ventilation measurement from cohort.
+	Class to get mechanical ventilation measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -606,7 +606,7 @@ class MechanicalVentilationComponent(Component):
 
 class LactateComponent(Component): 
 	'''
-	Class to get lactate measurement from cohort.
+	Class to get lactate measurement for cohort.
 	Units are normalized to mmol/L
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
@@ -706,7 +706,7 @@ class LactateComponent(Component):
 		
 class PaO2FiO2Component(Component): 
 	'''
-	Class to get PaO2:FiO2 ratio measurement from cohort.
+	Class to get PaO2:FiO2 ratio measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -867,7 +867,7 @@ class PaO2FiO2Component(Component):
 
 class SpO2FiO2Component(Component): 
 	'''
-	Class to get SpO2:FiO2 measurement ratio from cohort.
+	Class to get SpO2:FiO2 measurement ratio for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1037,7 +1037,7 @@ class SpO2FiO2Component(Component):
 		
 class VasopressorComponent(Component): 
 	'''
-	Class to get vasopressor drug exposure from cohort.
+	Class to get vasopressor drug exposure for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1141,7 +1141,7 @@ class VasopressorComponent(Component):
 
 class MeanArterialPressureComponent(Component): 
 	'''
-	Class to get MAP measurement from cohort.
+	Class to get MAP measurement for cohort.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1178,6 +1178,88 @@ class MeanArterialPressureComponent(Component):
 					ON measure.measurement_concept_id = concept.concept_id
 					where measure.measurement_concept_id = 3027598 AND
 						measure.value_as_number IS NOT NULL AND measure.value_as_number >= 10
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				mean_arterial_pressure_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						mapm.measurement_DATETIME AS map_datetime,
+						mapm.value_as_number AS map,
+						datetime_diff(mapm.measurement_DATETIME, index_date, DAY) as days_map_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN mean_arterial_pressure_from_measurement as mapm
+						ON susp_inf_rollup.person_id = mapm.person_id
+					WHERE
+						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(mapm.measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(mapm.measurement_DATETIME, INTERVAL 1 DAY) AS DATE) 
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				mean_arterial_pressure_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						MIN(map) as min_map
+					FROM mean_arterial_pressure_window 
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class UrineComponent(Component): 
+	'''
+	Class to get urine measurement for cohort.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_urine}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from urine_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH urine_from_measurement AS (
+					SELECT 
+						measure.person_id, 
+						measure.measurement_DATETIME,
+						measure.value_as_number, 
+						concept.concept_name AS measure_type 
+					FROM {dataset_project}.{dataset}.measurement measure
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON measure.measurement_concept_id = concept.concept_id
+					where measurement_concept_id = 45876241 and measure.value_as_number >= 0 and measure.value_as_number IS NOT NULL
 				),
 				'''
 		if not format_query:
