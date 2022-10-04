@@ -35,6 +35,26 @@ class Component:
 			"limit": None,
 			"min_stay_hour":0,
 			"print_query":False,
+			"meas_window_prior":'''DATE_SUB(CAST(index_date AS DATE), INTERVAL 2 DAY) > CAST(measurement_DATETIME AS DATE) AND
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) <= CAST(measurement_DATETIME AS DATE)''',
+			"meas_window_curr":'''CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+								  CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)''',
+			"obs_window_prior":'''DATE_SUB(CAST(index_date AS DATE), INTERVAL 2 DAY) > CAST(observation_DATETIME AS DATE) AND
+								  DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) <= CAST(observation_DATETIME AS DATE)''',
+			"obs_window_curr":'''CAST(index_date AS DATE) >= CAST(DATETIME_SUB(observation_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+								 CAST(index_date AS DATE) <= CAST(DATETIME_ADD(observation_DATETIME, INTERVAL 1 DAY) AS DATE)''',
+			"drug_window_prior":'''(DATE_SUB(CAST(index_date AS DATE), INTERVAL 3 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 4 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 5 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 6 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 7 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 8 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 9 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE))'''
+			"drug_window_curr":'''(CAST(index_date AS DATE) BETWEEN CAST(drug_exposure_start_DATETIME AS DATE) AND CAST(drug_exposure_end_DATETIME AS DATE) OR
+								  CAST(DATETIME_ADD(index_date, INTERVAL 1 DAY) AS DATE) BETWEEN CAST(drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+							      CAST(DATETIME_SUB(index_date, INTERVAL 1 DAY) AS DATE) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								  CAST(DATETIME_SUB(index_date, INTERVAL 2 DAY) AS DATE) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE))'''
 		}
 
 	def override_defaults(self, **kwargs):

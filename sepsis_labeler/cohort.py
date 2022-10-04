@@ -1,6 +1,6 @@
 from prediction_utils.cohorts.cohort import BQCohort
 
-class SepsisAdmissionCohort(BQCohort):
+class SepsisAdmissionCohortInitial(BQCohort):
 	'''
 	Class to get the sepsis admission cohort from OMOP schema.
 	Note: Optional, can specify pre-existing admission rollup in labeler arguments.
@@ -112,10 +112,23 @@ class SepsisAdmissionCohort(BQCohort):
 				FROM admit_times_final t1
 				INNER JOIN discharge_times_final as t2
 				ON t1.person_id=t2.person_id AND t1.row_number=t2.row_number
-			)
+			),
 			SELECT person_id, admit_date, discharge_date
 			FROM result
 			ORDER BY person_id, row_number
+			SELECT * EXCEPT (rnd, pos), 
+            FARM_FINGERPRINT(GENERATE_UUID()) as prediction_id
+            FROM (
+                SELECT *, ROW_NUMBER() OVER(PARTITION BY person_id ORDER BY rnd) AS pos
+                FROM (
+                    SELECT 
+                        *,
+                        FARM_FINGERPRINT(CONCAT(CAST(person_id AS STRING), CAST(admit_date AS STRING), CAST(discharge_date AS STRING))) as rnd
+                    FROM {base_query}
+                )
+            )
+            WHERE pos = 1
+            ORDER BY person_id, admit_date
 		"""
 
 		if not format_query:

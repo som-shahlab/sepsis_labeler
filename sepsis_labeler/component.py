@@ -160,12 +160,16 @@ class PlateletComponent(Component):
 				{values_query}
 				{window_query}
 				{rollup_query} 
-				select * from platelet_rollup
+				SELECT * FROM platelet_rollup
 				'''
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_platelet":self.config_dict['sepsis_platelet'] + '_prior' if self.prior else self.config_dict['sepsis_platelet']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -215,15 +219,13 @@ class PlateletComponent(Component):
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN platelet_from_measurement AS platelet USING (person_id)
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE) AND
-						value_as_number IS NOT NULL
+						{window}
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -262,7 +264,11 @@ class CreatinineComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_creatinine":self.config_dict['sepsis_creatinine'] + '_prior' if self.prior else self.config_dict['sepsis_creatinine']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -316,15 +322,13 @@ class CreatinineComponent(Component):
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN creatinine_from_measurement AS creatinine USING (person_id)
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE) AND
-						value_as_number IS NOT NULL
+						{window}
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -362,7 +366,11 @@ class GlasgowComaScaleComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_gcs":self.config_dict['sepsis_gcs'] + '_prior' if self.prior else self.config_dict['sepsis_gcs']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -399,14 +407,13 @@ class GlasgowComaScaleComponent(Component):
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN gcs_from_measurement AS gcs USING (person_id)
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)
+						{window}
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -445,7 +452,11 @@ class BilirubinComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_bilirubin":self.config_dict['sepsis_bilirubin'] + '_prior' if self.prior else self.config_dict['sepsis_bilirubin']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -495,14 +506,13 @@ class BilirubinComponent(Component):
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN bilirubin_from_measurement AS bilirubin USING (person_id)
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)
+						{window}
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -540,7 +550,11 @@ class MechanicalVentilationComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_vent":self.config_dict['sepsis_vent'] + '_prior' if self.prior else self.config_dict['sepsis_vent']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -577,15 +591,14 @@ class MechanicalVentilationComponent(Component):
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN mech_vent_from_flowsheet AS mech_vent USING (person_id)
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(observation_datetime, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(observation_datetime, INTERVAL 1 DAY) AS DATE)
+						{window}
 					ORDER BY  person_id, admit_date, index_date, observation_datetime 
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['obs_window_prior'] if self.prior else self.config_dict['obs_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -624,7 +637,11 @@ class LactateComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_lactate":self.config_dict['sepsis_lactate'] + '_prior' if self.prior else self.config_dict['sepsis_lactate']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -678,14 +695,13 @@ class LactateComponent(Component):
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN lactate_from_measurement AS lactate USING (person_id)
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)
+						{window}
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -723,7 +739,11 @@ class PaO2FiO2Component(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_pao2_fio2":self.config_dict['sepsis_pao2_fio2'] + '_prior' if self.prior else self.config_dict['sepsis_pao2_fio2']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -784,8 +804,7 @@ class PaO2FiO2Component(Component):
 					LEFT JOIN paO2_from_measurement AS paO2
 					USING (person_id)
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)
+						{meas_window}
 				),
 				fiO2_window AS ( 
 					SELECT 
@@ -801,8 +820,7 @@ class PaO2FiO2Component(Component):
 					LEFT JOIN fiO2_from_flowsheet as flowsheet
 					ON susp_inf_rollup.person_id = flowsheet.person_id
 					WHERE
-					CAST(index_date AS DATE) >= CAST(DATETIME_SUB(CAST(observation_datetime AS DATETIME), INTERVAL 2 DAY) AS DATE) AND
-					CAST(index_date As DATE) <= CAST(DATETIME_ADD(CAST(observation_datetime AS DATETIME), INTERVAL 1 DAY) AS DATE) AND
+					{obs_window} AND
 					fiO2 >=0.21 AND fiO2 <=1.0
 				),
 				paO2_fiO2_window AS (
@@ -825,7 +843,12 @@ class PaO2FiO2Component(Component):
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map(
+					{
+						**self.config_dict,
+						**{"meas_window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window'],
+						   "obs_window":self.config_dict['obs_window_prior'] if self.prior else self.config_dict['obs_window']}
+					})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -884,7 +907,11 @@ class SpO2FiO2Component(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_spo2_fio2":self.config_dict['sepsis_spo2_fio2'] + '_prior' if self.prior else self.config_dict['sepsis_spo2_fio2']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -950,8 +977,7 @@ class SpO2FiO2Component(Component):
 					LEFT JOIN spO2_from_flowsheet as flowsheet
 					ON susp_inf_rollup.person_id = flowsheet.person_id
 					WHERE
-					CAST(index_date AS DATE) >= CAST(DATETIME_SUB(CAST(observation_datetime AS DATETIME), INTERVAL 2 DAY) AS DATE) AND
-					CAST(index_date As DATE) <= CAST(DATETIME_ADD(CAST(observation_datetime AS DATETIME), INTERVAL 1 DAY) AS DATE) AND
+					{window} AND
 					meas_value >0 AND meas_value <=100
 				),
 				fiO2_window AS ( 
@@ -968,8 +994,7 @@ class SpO2FiO2Component(Component):
 					LEFT JOIN fiO2_from_flowsheet as flowsheet
 					ON susp_inf_rollup.person_id = flowsheet.person_id
 					WHERE
-					CAST(index_date AS DATE) >= CAST(DATETIME_SUB(CAST(observation_datetime AS DATETIME), INTERVAL 2 DAY) AS DATE) AND
-					CAST(index_date As DATE) <= CAST(DATETIME_ADD(CAST(observation_datetime AS DATETIME), INTERVAL 1 DAY) AS DATE) AND
+					{window} AND
 					fiO2 >=0.21 AND fiO2 <=1.0
 				),
 				spO2_fiO2_window AS (
@@ -992,7 +1017,7 @@ class SpO2FiO2Component(Component):
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['obs_window_prior'] if self.prior else self.config_dict['obs_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1054,7 +1079,11 @@ class VasopressorComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_vasopressor":self.config_dict['sepsis_vasopressor'] + '_prior' if self.prior else self.config_dict['sepsis_vasopressor']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -1107,20 +1136,13 @@ class VasopressorComponent(Component):
 					LEFT JOIN vasopressor_from_drug_exposure_with_name AS vasopressor
 					USING (person_id)
 					WHERE
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 3 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 4 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 5 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 6 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 7 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 8 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 9 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-						DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE)
+						{window}
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1158,7 +1180,11 @@ class MeanArterialPressureComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_map":self.config_dict['sepsis_map'] + '_prior' if self.prior else self.config_dict['sepsis_map']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -1197,14 +1223,13 @@ class MeanArterialPressureComponent(Component):
 					LEFT JOIN mean_arterial_pressure_from_measurement as mapm
 						ON susp_inf_rollup.person_id = mapm.person_id
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(mapm.measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date AS DATE) <= CAST(DATETIME_ADD(mapm.measurement_DATETIME, INTERVAL 1 DAY) AS DATE) 
+						{window} 
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1225,6 +1250,7 @@ class MeanArterialPressureComponent(Component):
 class UrineComponent(Component): 
 	'''
 	Class to get urine measurement for cohort.
+	Urine must be summed over day for each person during window.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1241,7 +1267,11 @@ class UrineComponent(Component):
 		if not format_query:
 			pass
 		else:
-			query = query.format_map({**self.config_dict,**{"values_query":self.get_values_query(), "window_query":self.get_window_query(), "rollup_query":self.get_rollup_query()}})
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_urine":self.config_dict['sepsis_urine'] + '_prior' if self.prior else self.config_dict['sepsis_urine']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -1261,6 +1291,17 @@ class UrineComponent(Component):
 					ON measure.measurement_concept_id = concept.concept_id
 					where measurement_concept_id = 45876241 and measure.value_as_number >= 0 and measure.value_as_number IS NOT NULL
 				),
+				urine_24_from_measurement AS (
+					SELECT 
+						measure.person_id, 
+						measure.measurement_DATETIME,
+						measure.value_as_number, 
+						concept.concept_name AS measure_type 
+					FROM {dataset_project}.{dataset}.measurement measure
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON measure.measurement_concept_id = concept.concept_id
+					where measurement_concept_id = 3012565 and measure.value_as_number >= 0 and measure.value_as_number IS NOT NULL
+				),
 				'''
 		if not format_query:
 			return query
@@ -1279,15 +1320,73 @@ class UrineComponent(Component):
 					LEFT JOIN urine_from_measurement as urine
 						ON susp_inf_rollup.person_id = urine.person_id 
 					WHERE
-						CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-						CAST(index_date As DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE) 
+						{window}
 					ORDER BY person_id, admit_date, measurement_DATETIME
+				),
+				urine_24_window AS (
+					SELECT 
+						susp_inf_rollup.*, 
+						urine.measurement_DATETIME AS urine_datetime, 
+						urine.value_as_number AS urine_volume,
+						datetime_diff(measurement_DATETIME, index_date, DAY) as days_urine_index
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN urine_24_from_measurement as urine
+						ON susp_inf_rollup.person_id = urine.person_id 
+					WHERE
+						{window}
+					ORDER BY person_id, admit_date, measurement_DATETIME
+				),
+				urine_admit_time AS (
+					SELECT 
+						person_id, 
+						MIN(observation_datetime) AS ext_urine_datetime,
+						EXTRACT(HOUR FROM MIN(observation_datetime)) AS hour, 
+						(24-EXTRACT(HOUR FROM MIN(observation_datetime))) AS adjust_hours
+					FROM urine_window AS urine
+					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
+					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
+					GROUP BY person_id
+				),
+				urine_discharge_time AS (
+					SELECT 
+						person_id, 
+						MAX(observation_datetime) AS ext_urine_datetime,
+						EXTRACT(HOUR FROM MAX(observation_datetime)) AS adjust_hours
+					FROM urine_window AS urine
+					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
+					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
+					GROUP BY person_id
+				),
+				urine_24_admit_time AS (
+					SELECT 
+						person_id, 
+						MIN(observation_datetime) AS ext_urine_datetime,
+						EXTRACT(HOUR FROM MIN(observation_datetime)) AS hour, 
+						(24-EXTRACT(HOUR FROM MIN(observation_datetime))) AS adjust_hours
+					FROM urine_window AS urine
+					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
+					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
+					GROUP BY person_id
+				),
+				urine_24_discharge_time AS (
+					SELECT 
+						person_id, 
+						MAX(observation_datetime) AS ext_urine_datetime,
+						EXTRACT(HOUR FROM MAX(observation_datetime)) AS adjust_hours
+					FROM urine_window AS urine
+					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
+					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
+					GROUP BY person_id
 				),
 				'''
 		if not format_query:
 			return query
 		else:
-			return query.format_map(self.config_dict)
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['meas_window_prior'] if self.prior else self.config_dict['meas_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1303,7 +1402,7 @@ class UrineComponent(Component):
 							ext_urine_datetime, 
 							adjust_hours
 						FROM urine_window 
-						LEFT JOIN admit_time USING (person_id)
+						LEFT JOIN urine_admit_time USING (person_id)
 						WHERE CAST(urine_datetime AS DATE) <> CAST(admit_date AS DATE) AND CAST(urine_datetime AS DATE) <> CAST (discharge_date AS DATE)
 						GROUP BY person_id, admit_date, discharge_date, CAST (urine_datetime AS DATE), ext_urine_datetime, adjust_hours 
 					)
@@ -1319,7 +1418,7 @@ class UrineComponent(Component):
 							ext_urine_datetime, 
 							adjust_hours
 						FROM urine_window 
-						LEFT JOIN admit_time USING (person_id)
+						LEFT JOIN urine_admit_time USING (person_id)
 						WHERE CAST(urine_datetime AS DATE) = CAST(admit_date AS DATE) 
 						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
 					)
@@ -1334,7 +1433,7 @@ class UrineComponent(Component):
 							ext_urine_datetime, 
 							adjust_hours
 						FROM urine_window 
-						LEFT JOIN discharge_time USING (person_id)
+						LEFT JOIN urine_discharge_time USING (person_id)
 						WHERE CAST(urine_datetime AS DATE) = CAST(discharge_date AS DATE) AND adjust_hours <> 0 
 						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
 					)
@@ -1349,12 +1448,12 @@ class UrineComponent(Component):
 							ext_urine_datetime, 
 							adjust_hours
 						FROM urine_window 
-						LEFT JOIN discharge_time USING (person_id)
+						LEFT JOIN urine_discharge_time USING (person_id)
 						WHERE CAST(urine_datetime AS DATE) = CAST(discharge_date AS DATE) AND adjust_hours = 0 
 						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
 					)
 				),
-				urinE_rollup AS (
+				urine_rollup AS (
 					SELECT 
 						person_id, 
 						admit_date, 

@@ -35,6 +35,14 @@ class Component:
 			"limit": None,
 			"min_stay_hour":0,
 			"print_query":False,
+			"meas_window_prior":'''DATE_SUB(CAST(index_date AS DATE), INTERVAL 2 DAY) > CAST(measurement_DATETIME AS DATE) AND
+								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) <= CAST(measurement_DATETIME AS DATE)''',
+			"meas_window_curr":'''CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+								  CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)''',
+			"obs_window_prior":'''DATE_SUB(CAST(index_date AS DATE), INTERVAL 2 DAY) > CAST(observation_DATETIME AS DATE) AND
+								  DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) <= CAST(observation_DATETIME AS DATE)''',
+			"obs_window_curr":'''CAST(index_date AS DATE) >= CAST(DATETIME_SUB(observation_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+								 CAST(index_date AS DATE) <= CAST(DATETIME_ADD(observation_DATETIME, INTERVAL 1 DAY) AS DATE)'''
 		}
 
 	def override_defaults(self, **kwargs):
