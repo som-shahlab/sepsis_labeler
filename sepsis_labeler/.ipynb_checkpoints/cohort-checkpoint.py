@@ -1,10 +1,14 @@
 from prediction_utils.cohorts.cohort import BQCohort
 
-class SepsisAdmissionCohortInitial(BQCohort):
+class SepsisAdmissionCohort(BQCohort): 
 	'''
 	Class to get the sepsis admission cohort from OMOP schema.
 	Note: Optional, can specify pre-existing admission rollup in labeler arguments.
+	TODO: ADD DEMOGRAPHICS TO COHORT< ATM ONLY ROLLUP W/ PREDICTION_IDS
 	'''
+	def __init__(self, *args, **kwargs):
+		BQCohort.__init__(self, *args, **kwargs)
+	
 	def get_base_query(self, format_query=True):
 		query = """ (
 		SELECT * FROM (
@@ -113,22 +117,24 @@ class SepsisAdmissionCohortInitial(BQCohort):
 				INNER JOIN discharge_times_final as t2
 				ON t1.person_id=t2.person_id AND t1.row_number=t2.row_number
 			),
-			SELECT person_id, admit_date, discharge_date
-			FROM result
+			pred_id_result AS (
+				SELECT * EXCEPT (rnd, pos), 
+				FARM_FINGERPRINT(GENERATE_UUID()) as prediction_id
+				FROM (
+					SELECT *, ROW_NUMBER() OVER(PARTITION BY person_id ORDER BY rnd) AS pos
+					FROM (
+						SELECT 
+							*,
+							FARM_FINGERPRINT(CONCAT(CAST(person_id AS STRING), CAST(admit_date AS STRING), CAST(discharge_date AS STRING))) as rnd
+						FROM result
+					)
+				)
+				WHERE pos = 1
+				ORDER BY person_id, admit_date
+			)
+			SELECT person_id, admit_date, discharge_date, prediction_id
+			FROM pred_id_result
 			ORDER BY person_id, row_number
-			SELECT * EXCEPT (rnd, pos), 
-            FARM_FINGERPRINT(GENERATE_UUID()) as prediction_id
-            FROM (
-                SELECT *, ROW_NUMBER() OVER(PARTITION BY person_id ORDER BY rnd) AS pos
-                FROM (
-                    SELECT 
-                        *,
-                        FARM_FINGERPRINT(CONCAT(CAST(person_id AS STRING), CAST(admit_date AS STRING), CAST(discharge_date AS STRING))) as rnd
-                    FROM {base_query}
-                )
-            )
-            WHERE pos = 1
-            ORDER BY person_id, admit_date
 		"""
 
 		if not format_query:
@@ -146,8 +152,13 @@ class SepsisAdmissionCohortInitial(BQCohort):
 		"""
 
 		if not format_query:
-			return query
+			pass
 		else:
-			return query.format_map(
+			query = query.format_map(
 				{**self.config_dict, **{"query": self.get_transform_query()}}
 			)
+		
+		if self.config_dict['print_query']:
+			print(query)
+		
+		return query

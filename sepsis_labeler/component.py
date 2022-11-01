@@ -89,6 +89,13 @@ class SuspectedInfectionComponent(Component):
 					LEFT JOIN bc_abx AS bc_abx
 					ON admission_rollup.person_id = bc_abx.person_id
 				),
+				admit_age AS (
+					SELECT
+						admit_bc_abx.*,
+						DATETIME_DIFF(admit_bc_abx.admit_date, p.birth_datetime, MONTH) as age_in_months
+						FROM admit_bc_abx
+						LEFT JOIN {dataset_project}.{dataset}.person p on admit_bc_abx.person_id = p.person_id
+				),
 				'''
 		if not format_query:
 			return query
@@ -102,20 +109,21 @@ class SuspectedInfectionComponent(Component):
 						person_id, 
 						bc_DATETIME, 
 						drug_exposure_start_DATETIME,
+						age_in_months,
 						admit_date as admit_datetime,
 						cast(admit_date as DATE) as admit_date,
 						discharge_date as discharge_datetime,
 						cast(discharge_date as DATE) as discharge_date, 
 						systemic_abx_type,
 						datetime_diff(drug_exposure_start_DATETIME, bc_DATETIME, DAY) as days_bc_abx
-					FROM admit_bc_abx as admit_bc_abx
+					FROM admit_age as admit_age
 					WHERE
 						CAST(bc_DATETIME AS DATE) >= DATE_SUB(admit_date, INTERVAL 1 DAY) AND  CAST(bc_DATETIME AS DATE) <= discharge_date AND
 						CAST(drug_exposure_start_DATETIME AS DATE) >= DATE_SUB(admit_date, INTERVAL 1 DAY) AND  CAST(drug_exposure_start_DATETIME AS DATE) <= discharge_date
 					AND
 						CAST(bc_DATETIME AS DATE)<= CAST(DATETIME_ADD(drug_exposure_start_DATETIME, INTERVAL 1 DAY) AS DATE) AND
 						CAST(bc_DATETIME AS DATE)>= CAST(DATETIME_SUB(drug_exposure_start_DATETIME, INTERVAL 3 DAY) AS DATE) 
-					ORDER BY person_id, admit_date, bc_DATETIME, drug_exposure_start_DATETIME
+					ORDER BY person_id, admit_date, bc_DATETIME, drug_exposure_start_DATETIME, age_in_months
 				),
 				'''
 		if not format_query:
@@ -128,6 +136,7 @@ class SuspectedInfectionComponent(Component):
 				susp_inf_rollup AS (
 					SELECT 
 					person_id, 
+					age_in_months,
 					admit_date,
 					admit_datetime,
 					MIN(discharge_date) AS discharge_date,
@@ -136,8 +145,8 @@ class SuspectedInfectionComponent(Component):
 					MIN(drug_exposure_start_DATETIME) as min_systemic_abx,
 					LEAST(MIN(bc_DATETIME),MIN(drug_exposure_start_DATETIME)) as index_date
 				FROM susp_inf_window 
-				GROUP BY person_id, admit_date, admit_datetime
-				ORDER BY person_id, admit_date, admit_datetime
+				GROUP BY person_id, admit_date, admit_datetime, age_in_months
+				ORDER BY person_id, admit_date, admit_datetime, age_in_months
 				)
 				'''
 		if not format_query:
@@ -233,10 +242,9 @@ class PlateletComponent(Component):
 					SELECT 
 						person_id, 
 						admit_date, 
-						admit_datetime, 
 						MIN(value_as_number) as min_platelet
 					FROM platelet_window 
-					GROUP BY person_id, admit_date, admit_datetime
+					GROUP BY person_id, admit_date
 				)
 				'''
 		if not format_query:
@@ -336,10 +344,9 @@ class CreatinineComponent(Component):
 					SELECT 
 						person_id, 
 						admit_date,
-						admit_datetime,
 						MAX(value_as_number) as max_creatinine
 					FROM creatinine_window 
-					GROUP BY person_id, admit_date, admit_datetime
+					GROUP BY person_id, admit_date
 				)
 				'''
 		if not format_query:
@@ -421,10 +428,9 @@ class GlasgowComaScaleComponent(Component):
 					SELECT 
 						person_id, 
 						admit_date,
-						admit_datetime,
 						MIN(value_as_number) as min_gcs
 					FROM gcs_window 
-					GROUP BY person_id, admit_date, admit_datetime
+					GROUP BY person_id, admit_date
 				)
 				'''
 		if not format_query:
@@ -520,10 +526,9 @@ class BilirubinComponent(Component):
 					SELECT 
 						person_id, 
 						admit_date,
-						admit_datetime,
 						MAX(value_as_number) as max_bilirubin
 					FROM bilirubin_window 
-					GROUP BY person_id, admit_date, admit_datetime
+					GROUP BY person_id, admit_date
 				)
 				'''
 		if not format_query:
@@ -570,7 +575,7 @@ class MechanicalVentilationComponent(Component):
 						UPPER(display_name) as row_disp_name, 
 						meas_value, 
 						unit_value as units
-					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					FROM {dataset_project}.{rs_dataset}.{ext_flwsht_table}
 					where (upper(display_name) = 'VENT MODE' or upper(display_name) = 'VENTILATION MODE') and
 					(meas_value <> 'STANDBY' and meas_value <> 'MONITOR' and meas_value is not null)   
 				),
@@ -606,10 +611,9 @@ class MechanicalVentilationComponent(Component):
 					SELECT 
 						person_id, 
 						admit_date,
-						admit_datetime,
 						COUNT(vent_mode) as count_vent_mode
-					FROM mech_vent_window 
-					GROUP BY person_id, admit_date, admit_datetime
+					FROM mech_vent_window
+					GROUP BY person_id, admit_date
 				)
 				'''
 		if not format_query:
@@ -709,10 +713,9 @@ class LactateComponent(Component):
 					SELECT 
 						person_id, 
 						admit_date, 
-						admit_datetime, 
 						MAX(value_as_number) as max_lactate
 					FROM lactate_window 
-					GROUP BY person_id, admit_date, admit_datetime
+					GROUP BY person_id, admit_date
 				)
 				'''
 		if not format_query:
@@ -770,7 +773,7 @@ class PaO2FiO2Component(Component):
 						UPPER(display_name) as row_disp_name, 
 						SAFE_CAST(meas_value as float64) as meas_value, 
 						unit_value as units
-					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					FROM {dataset_project}.{rs_dataset}.{ext_flwsht_table}
 					where (upper(display_name) = 'FIO2 (%)' or (upper(display_name) = 'FIO2 %' and upper(source_display_name) = 'RN CLINICAL SCREENING'))
 						  and meas_value is not null
 				),
@@ -876,7 +879,7 @@ class PaO2FiO2Component(Component):
 				paO2_fiO2_rollup AS (
 					SELECT 
 						person_id, 
-						CAST(admit_date AS DATE) as admit_date, 
+						admit_date, 
 						MIN(paO2fiO2_ratio) as min_paO2fiO2_ratio
 					FROM paO2_fiO2_initial_rollup_join 
 					WHERE minutes_fiO2_paO2 <= 24*60
@@ -927,7 +930,7 @@ class SpO2FiO2Component(Component):
 						UPPER(display_name) as row_disp_name, 
 						SAFE_CAST(meas_value as float64) as meas_value, 
 						unit_value as units
-					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					FROM {dataset_project}.{rs_dataset}.{ext_flwsht_table}
 					where ((upper(display_name) = 'OXYGEN SATURATION' AND upper(source_display_name) = 'SPO2') 
 					or (upper(display_name) like 'SPO2 - %' and upper(source_display_name) = 'DEVICES TESTING TEMPLATE'))
 					and meas_value is not null
@@ -939,7 +942,7 @@ class SpO2FiO2Component(Component):
 						UPPER(display_name) as row_disp_name, 
 						SAFE_CAST(meas_value as float64) as meas_value, 
 						unit_value as units
-					FROM {dataset_project}.{rs_dataset}.meas_vals_json
+					FROM {dataset_project}.{rs_dataset}.{ext_flwsht_table}
 					where (upper(display_name) = 'FIO2 (%)' or (upper(display_name) = 'FIO2 %' and upper(source_display_name) = 'RN CLINICAL SCREENING'))
 						  and meas_value is not null
 				),
@@ -1048,7 +1051,7 @@ class SpO2FiO2Component(Component):
 				spO2_fiO2_rollup AS (
 					SELECT
 						person_id, 
-						CAST(admit_date AS DATE) as admit_date, 
+						admit_date as admit_date, 
 						MIN(spO2fiO2_ratio) as min_spO2fiO2_ratio
 					FROM spO2_fiO2_initial_rollup_join 
 					WHERE minutes_fiO2_spO2 <= 24*60
@@ -1343,7 +1346,7 @@ class UrineComponent(Component):
 						EXTRACT(HOUR FROM MIN(observation_datetime)) AS hour, 
 						(24-EXTRACT(HOUR FROM MIN(observation_datetime))) AS adjust_hours
 					FROM urine_window AS urine
-					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					LEFT JOIN {dataset_project}.{rs_dataset}.{ext_flwsht_table} AS flowsheets_orig  USING (person_id)
 					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
 					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
 					GROUP BY person_id
@@ -1354,7 +1357,7 @@ class UrineComponent(Component):
 						MAX(observation_datetime) AS ext_urine_datetime,
 						EXTRACT(HOUR FROM MAX(observation_datetime)) AS adjust_hours
 					FROM urine_window AS urine
-					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					LEFT JOIN {dataset_project}.{rs_dataset}.{ext_flwsht_table} AS flowsheets_orig  USING (person_id)
 					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
 					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
 					GROUP BY person_id
@@ -1366,7 +1369,7 @@ class UrineComponent(Component):
 						EXTRACT(HOUR FROM MIN(observation_datetime)) AS hour, 
 						(24-EXTRACT(HOUR FROM MIN(observation_datetime))) AS adjust_hours
 					FROM urine_window AS urine
-					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					LEFT JOIN {dataset_project}.{rs_dataset}.{ext_flwsht_table} AS flowsheets_orig  USING (person_id)
 					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
 					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
 					GROUP BY person_id
@@ -1377,7 +1380,7 @@ class UrineComponent(Component):
 						MAX(observation_datetime) AS ext_urine_datetime,
 						EXTRACT(HOUR FROM MAX(observation_datetime)) AS adjust_hours
 					FROM urine_window AS urine
-					LEFT JOIN {dataset_project}.{rs_dataset}.meas_vals_json AS flowsheets_orig  USING (person_id)
+					LEFT JOIN {dataset_project}.{rs_dataset}.{ext_flwsht_table} AS flowsheets_orig  USING (person_id)
 					WHERE CAST(admit_date AS DATE) = CAST(observation_datetime AS DATE)  
 					AND observation_datetime <> DATETIME_TRUNC(observation_datetime, DAY)
 					GROUP BY person_id
@@ -1403,7 +1406,7 @@ class UrineComponent(Component):
 							adjust_hours
 						FROM urine_window 
 						LEFT JOIN urine_admit_time USING (person_id)
-						WHERE CAST(urine_datetime AS DATE) <> CAST(admit_date AS DATE) AND CAST(urine_datetime AS DATE) <> CAST (discharge_date AS DATE)
+						WHERE CAST(urine_datetime AS DATE) <> admit_date AND CAST(urine_datetime AS DATE) <> CAST (discharge_date AS DATE)
 						GROUP BY person_id, admit_date, discharge_date, CAST (urine_datetime AS DATE), ext_urine_datetime, adjust_hours 
 					)
 					UNION ALL
@@ -1419,7 +1422,7 @@ class UrineComponent(Component):
 							adjust_hours
 						FROM urine_window 
 						LEFT JOIN urine_admit_time USING (person_id)
-						WHERE CAST(urine_datetime AS DATE) = CAST(admit_date AS DATE) 
+						WHERE CAST(urine_datetime AS DATE) = admit_date
 						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
 					)
 					UNION ALL
@@ -1434,7 +1437,7 @@ class UrineComponent(Component):
 							adjust_hours
 						FROM urine_window 
 						LEFT JOIN urine_discharge_time USING (person_id)
-						WHERE CAST(urine_datetime AS DATE) = CAST(discharge_date AS DATE) AND adjust_hours <> 0 
+						WHERE CAST(urine_datetime AS DATE) = discharge_date) AND adjust_hours <> 0 
 						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
 					)
 					UNION ALL # THIS LAST BIT DEALS WITH DISCHARGE AT 0:00:00 HOURS
@@ -1449,7 +1452,7 @@ class UrineComponent(Component):
 							adjust_hours
 						FROM urine_window 
 						LEFT JOIN urine_discharge_time USING (person_id)
-						WHERE CAST(urine_datetime AS DATE) = CAST(discharge_date AS DATE) AND adjust_hours = 0 
+						WHERE CAST(urine_datetime AS DATE) = discharge_date AND adjust_hours = 0 
 						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
 					)
 				),
