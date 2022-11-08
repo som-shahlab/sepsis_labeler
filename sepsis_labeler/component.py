@@ -1147,7 +1147,7 @@ class DopamineComponent(Component):
 		if not format_query:
 			return query
 		else:
-			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1250,7 +1250,7 @@ class DobutamineComponent(Component):
 		if not format_query:
 			return query
 		else:
-			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1353,7 +1353,7 @@ class EpinephrineComponent(Component):
 		if not format_query:
 			return query
 		else:
-			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1456,7 +1456,7 @@ class NorepinephrineComponent(Component):
 		if not format_query:
 			return query
 		else:
-			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''

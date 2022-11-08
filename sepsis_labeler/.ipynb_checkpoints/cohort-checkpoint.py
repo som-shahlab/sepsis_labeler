@@ -4,7 +4,6 @@ class SepsisAdmissionCohort(BQCohort):
 	'''
 	Class to get the sepsis admission cohort from OMOP schema.
 	Note: Optional, can specify pre-existing admission rollup in labeler arguments.
-	TODO: ADD DEMOGRAPHICS TO COHORT< ATM ONLY ROLLUP W/ PREDICTION_IDS
 	'''
 	def __init__(self, *args, **kwargs):
 		BQCohort.__init__(self, *args, **kwargs)
@@ -111,11 +110,36 @@ class SepsisAdmissionCohort(BQCohort):
 				FROM result_long
 				WHERE endpoint_type = 'admit_date'
 			),
+			gender_name AS (
+                SELECT person.*, concept.concept_name AS gender_name,
+                FROM `{dataset_project}.{dataset}.person` AS person 
+                LEFT JOIN `{dataset_project}.{dataset}.concept` AS concept ON person.gender_concept_id = concept.concept_id
+            ),
+            race_name AS (
+                SELECT person.*, concept.concept_name AS race_name,
+                FROM `{dataset_project}.{dataset}.person` AS person
+                LEFT JOIN `{dataset_project}.{dataset}.concept` AS concept ON person.race_concept_id = concept.concept_id
+            ),
+            ethnicity_name AS (
+                SELECT person.*, concept.concept_name AS ethnicity_name,
+                FROM `{dataset_project}.{dataset}.person` AS person 
+                LEFT JOIN `{dataset_project}.{dataset}.concept` AS concept ON person.ethnicity_concept_id = concept.concept_id
+            ),
 			result AS (
-				SELECT t1.person_id, admit_date, discharge_date, t1.row_number
+				SELECT t1.person_id, admit_date, discharge_date, person.birth_DATETIME, gn.gender_name, rn.race_name, en.ethnicity_name, 
+                DATE_DIFF(CAST(admit_date AS DATE), CAST(person.birth_DATETIME AS DATE), YEAR) AS age_in_years,
+				CASE 
+					WHEN DATE_DIFF(CAST(admit_date AS DATE), CAST(person.birth_DATETIME AS DATE), YEAR) <= 18 THEN 0
+					ELSE 1 
+				END adult_at_admission,
+				t1.row_number
 				FROM admit_times_final t1
 				INNER JOIN discharge_times_final as t2
 				ON t1.person_id=t2.person_id AND t1.row_number=t2.row_number
+				LEFT JOIN gender_name gn on gn.person_id = t1.person_id
+				LEFT JOIN race_name rn on rn.person_id = t1.person_id
+				LEFT JOIN ethnicity_name en on en.person_id = t1.person_id
+				LEFT JOIN `{dataset_project}.{dataset}.person` AS person on person.person_id = t1.person_id
 			),
 			pred_id_result AS (
 				SELECT * EXCEPT (rnd, pos), 
@@ -132,7 +156,7 @@ class SepsisAdmissionCohort(BQCohort):
 				WHERE pos = 1
 				ORDER BY person_id, admit_date
 			)
-			SELECT person_id, admit_date, discharge_date, prediction_id
+			SELECT * EXCEPT (row_number)
 			FROM pred_id_result
 			ORDER BY person_id, row_number
 		"""
