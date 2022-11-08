@@ -1063,9 +1063,10 @@ class SpO2FiO2Component(Component):
 		else:
 			return query.format_map(self.config_dict)
 		
-class VasopressorComponent(Component): 
+class DopamineComponent(Component): 
 	'''
-	Class to get vasopressor drug exposure for cohort.
+	Class to get dopamine drug exposure for cohort.
+	Dosage amounts are unavailable in STARR-OMOP, so only the presence of the drug exposure will be used.
 	'''
 	def __init__(self, prior=False, *args, **kwargs):
 		Component.__init__(self, *args, **kwargs)
@@ -1073,11 +1074,11 @@ class VasopressorComponent(Component):
 	
 	def get_component_query(self, format_query=True):
 		query = '''
-				CREATE OR REPLACE TABLE `{sepsis_vasopressor}` AS
+				CREATE OR REPLACE TABLE `{sepsis_dopamine}` AS
 				{values_query}
 				{window_query}
 				{rollup_query} 
-				select * from vasopressor_rollup
+				select * from dopamine_rollup
 				'''
 		if not format_query:
 			pass
@@ -1086,7 +1087,7 @@ class VasopressorComponent(Component):
 						{**{"values_query":self.get_values_query(), 
 							"window_query":self.get_window_query(), 
 							"rollup_query":self.get_rollup_query()}, 
-							"sepsis_vasopressor":self.config_dict['sepsis_vasopressor'] + '_prior' if self.prior else self.config_dict['sepsis_vasopressor']})
+							"sepsis_dopamine":self.config_dict['sepsis_dopamine'] + '_prior' if self.prior else self.config_dict['sepsis_dopamine']})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -1095,27 +1096,27 @@ class VasopressorComponent(Component):
 
 	def get_values_query(self, format_query=True):
 		query = '''
-				WITH vasopressor_list AS (
+				WITH dopamine_list AS (
 					SELECT 
 						descendant_concept_id AS concept_id
 					FROM {dataset_project}.{dataset}.concept_ancestor
-					WHERE ancestor_concept_id IN (21600284, 21600287, 21600303, 21600283, 21600308)
+					WHERE ancestor_concept_id IN (21600284)
 				),
-				vasopressor_from_drug_exposure_via_ancestor AS ( 
+				dopamine_from_drug_exposure_via_ancestor AS ( 
 					SELECT *
 					FROM {dataset_project}.{dataset}.drug_exposure AS drug
 					WHERE drug.drug_concept_id IN (
 						SELECT concept_id
-						FROM vasopressor_list
+						FROM dopamine_list
 					)
 				),
-				vasopressor_from_drug_exposure_with_name AS (
+				dopamine_from_drug_exposure_with_name AS (
 					SELECT 
-						vasopressor.*, 
-						concept.concept_name AS vasopressor_type  
-					FROM vasopressor_from_drug_exposure_via_ancestor AS vasopressor
+						dopamine.*, 
+						concept.concept_name AS dopamine_type  
+					FROM dopamine_from_drug_exposure_via_ancestor AS dopamine
 					INNER JOIN {dataset_project}.{dataset}.concept AS concept
-					ON vasopressor.drug_concept_id = concept.concept_id
+					ON dopamine.drug_concept_id = concept.concept_id
 				),
 				'''
 		if not format_query:
@@ -1125,18 +1126,18 @@ class VasopressorComponent(Component):
 
 	def get_window_query(self, format_query=True):
 		query = '''
-				vasopressor_window AS (
+				dopamine_window AS (
 					SELECT 
 						susp_inf_rollup.person_id, 
 						susp_inf_rollup.admit_date, 
 						susp_inf_rollup.index_date,
-						vasopressor.drug_exposure_start_DATETIME, 
-						vasopressor.drug_exposure_end_DATETIME,
-						datetime_diff(vasopressor.drug_exposure_start_DATETIME, index_date, DAY) as days_index_vasostart,
-						datetime_diff(vasopressor.drug_exposure_end_DATETIME, index_date, DAY) as days_index_vasoend,
-						(datetime_diff(vasopressor.drug_exposure_end_DATETIME, vasopressor.drug_exposure_start_DATETIME, DAY) + 1) as days_vasopressor
+						dopamine.drug_exposure_start_DATETIME, 
+						dopamine.drug_exposure_end_DATETIME,
+						datetime_diff(dopamine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_dopamine_start,
+						datetime_diff(dopamine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_dopamine_end,
+						(datetime_diff(dopamine.drug_exposure_end_DATETIME, dopamine.drug_exposure_start_DATETIME, DAY) + 1) as days_dopamine
 					FROM {suspected_infection} AS susp_inf_rollup
-					LEFT JOIN vasopressor_from_drug_exposure_with_name AS vasopressor
+					LEFT JOIN dopamine_from_drug_exposure_with_name AS dopamine
 					USING (person_id)
 					WHERE
 						{window}
@@ -1150,13 +1151,322 @@ class VasopressorComponent(Component):
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
-				vasopressor_rollup AS (
+				dopamine_rollup AS (
 					SELECT 
 						person_id, 
 						admit_date, 
-						MAX(datetime_diff(vasopressor.drug_exposure_end_DATETIME, vasopressor.drug_exposure_start_DATETIME, DAY) + 1)
-					as max_vaso_days
-					FROM vasopressor_window as vasopressor 
+						MAX(datetime_diff(dopamine.drug_exposure_end_DATETIME, dopamine.drug_exposure_start_DATETIME, DAY) + 1)
+					as max_dopamine_days
+					FROM dopamine_window as dopamine 
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class DobutamineComponent(Component): 
+	'''
+	Class to get dobutamine drug exposure for cohort.
+	Dosage amounts are unavailable in STARR-OMOP, so only the presence of the drug exposure will be used.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_dobutamine}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from dobutamine_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_dobutamine":self.config_dict['sepsis_dobutamine'] + '_prior' if self.prior else self.config_dict['sepsis_dobutamine']})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH dobutamine_list AS (
+					SELECT 
+						descendant_concept_id AS concept_id
+					FROM {dataset_project}.{dataset}.concept_ancestor
+					WHERE ancestor_concept_id IN (21600287)
+				),
+				dobutamine_from_drug_exposure_via_ancestor AS ( 
+					SELECT *
+					FROM {dataset_project}.{dataset}.drug_exposure AS drug
+					WHERE drug.drug_concept_id IN (
+						SELECT concept_id
+						FROM dobutamine_list
+					)
+				),
+				dobutamine_from_drug_exposure_with_name AS (
+					SELECT 
+						dobutamine.*, 
+						concept.concept_name AS dobutamine_type  
+					FROM dobutamine_from_drug_exposure_via_ancestor AS dobutamine
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON dobutamine.drug_concept_id = concept.concept_id
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				dobutamine_window AS (
+					SELECT 
+						susp_inf_rollup.person_id, 
+						susp_inf_rollup.admit_date, 
+						susp_inf_rollup.index_date,
+						dobutamine.drug_exposure_start_DATETIME, 
+						dobutamine.drug_exposure_end_DATETIME,
+						datetime_diff(dobutamine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_dobutamine_start,
+						datetime_diff(dobutamine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_dobutamine_end,
+						(datetime_diff(dobutamine.drug_exposure_end_DATETIME, dobutamine.drug_exposure_start_DATETIME, DAY) + 1) as days_dobutamine
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN dobutamine_from_drug_exposure_with_name AS dobutamine
+					USING (person_id)
+					WHERE
+						{window}
+				),
+				'''
+		
+		if not format_query:
+			return query
+		else:
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				dobutamine_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						MAX(datetime_diff(dobutamine.drug_exposure_end_DATETIME, dobutamine.drug_exposure_start_DATETIME, DAY) + 1)
+					as max_dobutamine_days
+					FROM dobutamine_window as dobutamine 
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class EpinephrineComponent(Component): 
+	'''
+	Class to get epinephrine drug exposure for cohort.
+	Dosage amounts are unavailable in STARR-OMOP, so only the presence of the drug exposure will be used.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_epinephrine}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from epinephrine_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_epinephrine":self.config_dict['sepsis_epinephrine'] + '_prior' if self.prior else self.config_dict['sepsis_epinephrine']})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH epinephrine_list AS (
+					SELECT 
+						descendant_concept_id AS concept_id
+					FROM {dataset_project}.{dataset}.concept_ancestor
+					WHERE ancestor_concept_id IN (21600303)
+				),
+				epinephrine_from_drug_exposure_via_ancestor AS ( 
+					SELECT *
+					FROM {dataset_project}.{dataset}.drug_exposure AS drug
+					WHERE drug.drug_concept_id IN (
+						SELECT concept_id
+						FROM epinephrine_list
+					)
+				),
+				epinephrine_from_drug_exposure_with_name AS (
+					SELECT 
+						epinephrine.*, 
+						concept.concept_name AS epinephrine_type  
+					FROM epinephrine_from_drug_exposure_via_ancestor AS epinephrine
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON epinephrine.drug_concept_id = concept.concept_id
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				epinephrine_window AS (
+					SELECT 
+						susp_inf_rollup.person_id, 
+						susp_inf_rollup.admit_date, 
+						susp_inf_rollup.index_date,
+						epinephrine.drug_exposure_start_DATETIME, 
+						epinephrine.drug_exposure_end_DATETIME,
+						datetime_diff(epinephrine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_epinephrine_start,
+						datetime_diff(epinephrine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_epinephrine_end,
+						(datetime_diff(epinephrine.drug_exposure_end_DATETIME, epinephrine.drug_exposure_start_DATETIME, DAY) + 1) as days_epinephrine
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN epinephrine_from_drug_exposure_with_name AS epinephrine
+					USING (person_id)
+					WHERE
+						{window}
+				),
+				'''
+		
+		if not format_query:
+			return query
+		else:
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				epinephrine_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						MAX(datetime_diff(epinephrine.drug_exposure_end_DATETIME, epinephrine.drug_exposure_start_DATETIME, DAY) + 1)
+					as max_epinephrine_days
+					FROM epinephrine_window as epinephrine 
+					GROUP BY person_id, admit_date
+				)
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+class NorepinephrineComponent(Component): 
+	'''
+	Class to get norepinephrine drug exposure for cohort.
+	Dosage amounts are unavailable in STARR-OMOP, so only the presence of the drug exposure will be used.
+	'''
+	def __init__(self, prior=False, *args, **kwargs):
+		Component.__init__(self, *args, **kwargs)
+		self.prior = prior
+	
+	def get_component_query(self, format_query=True):
+		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_norepinephrine}` AS
+				{values_query}
+				{window_query}
+				{rollup_query} 
+				select * from norepinephrine_rollup
+				'''
+		if not format_query:
+			pass
+		else:
+			query = query.format_map(
+						{**{"values_query":self.get_values_query(), 
+							"window_query":self.get_window_query(), 
+							"rollup_query":self.get_rollup_query()}, 
+							"sepsis_norepinephrine":self.config_dict['sepsis_norepinephrine'] + '_prior' if self.prior else self.config_dict['sepsis_norepinephrine']})
+			
+		if self.config_dict['print_query']:
+			print(query)
+			
+		return query
+
+	def get_values_query(self, format_query=True):
+		query = '''
+				WITH norepinephrine_list AS (
+					SELECT 
+						descendant_concept_id AS concept_id
+					FROM {dataset_project}.{dataset}.concept_ancestor
+					WHERE ancestor_concept_id IN (21600283)
+				),
+				norepinephrine_from_drug_exposure_via_ancestor AS ( 
+					SELECT *
+					FROM {dataset_project}.{dataset}.drug_exposure AS drug
+					WHERE drug.drug_concept_id IN (
+						SELECT concept_id
+						FROM norepinephrine_list
+					)
+				),
+				norepinephrine_from_drug_exposure_with_name AS (
+					SELECT 
+						norepinephrine.*, 
+						concept.concept_name AS norepinephrine_type  
+					FROM norepinephrine_from_drug_exposure_via_ancestor AS norepinephrine
+					INNER JOIN {dataset_project}.{dataset}.concept AS concept
+					ON norepinephrine.drug_concept_id = concept.concept_id
+				),
+				'''
+		if not format_query:
+			return query
+		else:
+			return query.format_map(self.config_dict)
+
+	def get_window_query(self, format_query=True):
+		query = '''
+				norepinephrine_window AS (
+					SELECT 
+						susp_inf_rollup.person_id, 
+						susp_inf_rollup.admit_date, 
+						susp_inf_rollup.index_date,
+						norepinephrine.drug_exposure_start_DATETIME, 
+						norepinephrine.drug_exposure_end_DATETIME,
+						datetime_diff(norepinephrine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_norepinephrine_start,
+						datetime_diff(norepinephrine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_norepinephrine_end,
+						(datetime_diff(norepinephrine.drug_exposure_end_DATETIME, norepinephrine.drug_exposure_start_DATETIME, DAY) + 1) as days_norepinephrine
+					FROM {suspected_infection} AS susp_inf_rollup
+					LEFT JOIN norepinephrine_from_drug_exposure_with_name AS norepinephrine
+					USING (person_id)
+					WHERE
+						{window}
+				),
+				'''
+		
+		if not format_query:
+			return query
+		else:
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
+
+	def get_rollup_query(self, format_query=True):
+		query = '''
+				norepinephrine_rollup AS (
+					SELECT 
+						person_id, 
+						admit_date, 
+						MAX(datetime_diff(norepinephrine.drug_exposure_end_DATETIME, norepinephrine.drug_exposure_start_DATETIME, DAY) + 1)
+					as max_norepinephrine_days
+					FROM norepinephrine_window as norepinephrine 
 					GROUP BY person_id, admit_date
 				)
 				'''

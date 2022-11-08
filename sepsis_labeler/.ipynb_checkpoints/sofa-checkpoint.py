@@ -25,10 +25,16 @@ class SOFAScore:
 					c.crea_SOFA,
 					p.max_creatinine as max_creatinine_prior,
 					p.crea_SOFA as crea_SOFA_prior, 
-					c.max_vaso_days,
+					c.max_dopamine_days,
+					c.max_dobutamine_days,
+					c.max_epinephrine_days,
+					c.max_norepinephrine_days,
 					c.min_map,
 					c.cv_SOFA,
-					p.max_vaso_days as max_vaso_days_prior,
+					p.max_dopamine_days as max_dopamine_days_prior,
+					p.max_dobutamine_days as max_dobutamine_days_prior,
+					p.max_epinephrine_days as max_epinephrine_days_prior,
+					p.max_norepinephrine_days as max_norepinephrine_days_prior,
 					p.min_map as min_map_prior,
 					p.cv_SOFA as cv_SOFA_prior,
 					c.count_vent_mode,
@@ -157,7 +163,7 @@ class SOFAScore:
                 END bili_SOFA,
                 max_creatinine, 
                 CASE 
-					WHEN susp_inf_rollup.age_in_months >= 216 THEN
+					WHEN susp_inf_rollup.age_in_months >= 216 THEN #  look into creatinine issue
 					(
 						CASE
 							WHEN max_creatinine IS NULL THEN 0 
@@ -236,13 +242,17 @@ class SOFAScore:
 					)
 				
                 END crea_SOFA,
-                max_vaso_days, 
+                max_dopamine_days,
+				max_dobutamine_days,
+				max_epinephrine_days,
+				max_norepinephrine_days,
                 min_map, 
                 CASE 
 					WHEN susp_inf_rollup.age_in_months >=216 THEN
 					(
 						CASE
-							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL THEN 3
+							WHEN max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 2
 							WHEN min_map <70 THEN 1 
 							ELSE 0 
 						END
@@ -250,7 +260,8 @@ class SOFAScore:
 					WHEN susp_inf_rollup.age_in_months >=144 THEN
 					(
 						CASE
-							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL THEN 3
+							WHEN max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 2
 							WHEN min_map <67 THEN 1 
 							ELSE 0 
 						END
@@ -258,7 +269,8 @@ class SOFAScore:
 					WHEN susp_inf_rollup.age_in_months >=60 THEN
 					(
 						CASE
-							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL THEN 3
+							WHEN max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 2
 							WHEN min_map <65 THEN 1 
 							ELSE 0 
 						END
@@ -266,7 +278,8 @@ class SOFAScore:
 					WHEN susp_inf_rollup.age_in_months >=24 THEN
 					(
 						CASE
-							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL THEN 3
+							WHEN max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 2
 							WHEN min_map <62 THEN 1 
 							ELSE 0 
 						END
@@ -274,7 +287,8 @@ class SOFAScore:
 					WHEN susp_inf_rollup.age_in_months >=12 THEN
 					(
 						CASE
-							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL THEN 3
+							WHEN max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 2
 							WHEN min_map <60 THEN 1 
 							ELSE 0 
 						END
@@ -282,7 +296,8 @@ class SOFAScore:
 					WHEN susp_inf_rollup.age_in_months >=1 THEN
 					(
 						CASE
-							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL THEN 3
+							WHEN max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 2
 							WHEN min_map <55 THEN 1 
 							ELSE 0 
 						END
@@ -290,7 +305,8 @@ class SOFAScore:
 					ELSE
 					(
 						CASE
-							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL THEN 3
+							WHEN max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 2
 							WHEN min_map <46 THEN 1 
 							ELSE 0 
 						END
@@ -330,7 +346,7 @@ class SOFAScore:
                     ELSE 0 
                 END urine_SOFA,
                 CASE 
-                    WHEN max_vaso_days IS NOT NULL THEN 1 
+                    WHEN max_epinephrine_days IS NOT NULL or max_norepinephrine_days IS NOT NULL OR max_dopamine_days IS NOT NULL or max_dobutamine_days IS NOT NULL THEN 1 
                     ELSE 0 
                 END vaso_shock,
                 CASE 
@@ -346,7 +362,10 @@ class SOFAScore:
             LEFT JOIN {sepsis_platelet} USING (person_id, admit_date)
             LEFT JOIN {sepsis_bilirubin} USING (person_id, admit_date)
             LEFT JOIN {sepsis_creatinine} USING (person_id, admit_date)
-            LEFT JOIN {sepsis_vasopressor} USING (person_id, admit_date)
+            LEFT JOIN {sepsis_dopamine} USING (person_id, admit_date)
+			LEFT JOIN {sepsis_dobutamine} USING (person_id, admit_date)
+			LEFT JOIN {sepsis_epinephrine} USING (person_id, admit_date)
+			LEFT JOIN {sepsis_norepinephrine} USING (person_id, admit_date)
             LEFT JOIN {sepsis_map} USING (person_id, admit_date)
             LEFT JOIN {sepsis_pao2_fio2} USING (person_id, admit_date)
             LEFT JOIN {sepsis_vent} USING (person_id, admit_date)
@@ -369,7 +388,10 @@ class SOFAScore:
 							"sepsis_vent":self.config_dict['sepsis_vent'] + '_prior' if prior else self.config_dict['sepsis_vent'],
 							"sepsis_lactate":self.config_dict['sepsis_lactate'] + '_prior' if prior else self.config_dict['sepsis_lactate'],
 							"sepsis_spo2_fio2":self.config_dict['sepsis_spo2_fio2'] + '_prior' if prior else self.config_dict['sepsis_spo2_fio2'],
-							"sepsis_vasopressor":self.config_dict['sepsis_vasopressor'] + '_prior' if prior else self.config_dict['sepsis_vasopressor'],
+							"sepsis_dopamine":self.config_dict['sepsis_dopamine'] + '_prior' if prior else self.config_dict['sepsis_dopamine'],
+							"sepsis_dobutamine":self.config_dict['sepsis_dobutamine'] + '_prior' if prior else self.config_dict['sepsis_dobutamine'],
+							"sepsis_epinephrine":self.config_dict['sepsis_epinephrine'] + '_prior' if prior else self.config_dict['sepsis_epinephrine'],
+							"sepsis_norepinephrine":self.config_dict['sepsis_norepinephrine'] + '_prior' if prior else self.config_dict['sepsis_norepinephrine'],
 							"sepsis_map":self.config_dict['sepsis_map'] + '_prior' if prior else self.config_dict['sepsis_map'],
 							"sepsis_urine":self.config_dict['sepsis_urine'] + '_prior' if prior else self.config_dict['sepsis_urine'],
 							"sepsis_pao2_fio2":self.config_dict['sepsis_pao2_fio2'] + '_prior' if prior else self.config_dict['sepsis_pao2_fio2'],
