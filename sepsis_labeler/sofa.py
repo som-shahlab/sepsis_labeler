@@ -9,19 +9,118 @@ class SOFAScore:
 	def get_difference_query(self, format_query=True):
 		query = '''
 				CREATE OR REPLACE TABLE `{sepsis_difference}` AS
-				{values_query}
-				{window_query}
-				{rollup_query} 
-				select * from lactate_rollup
+				SELECT 
+					cohort.person_id, 
+					cohort.admit_date, 
+					cohort.discharge_date, 
+					c.min_platelet,
+					c.plat_SOFA,
+					p.min_platelet as min_platelet_prior,
+					p.plat_SOFA as plat_SOFA_prior,
+					c.max_bilirubin, 
+					c.bili_SOFA,
+					p.max_bilirubin as max_bilirubin_prior,
+					p.bili_SOFA as bili_SOFA_prior,
+					c.max_creatinine,
+					c.crea_SOFA,
+					p.max_creatinine as max_creatinine_prior,
+					p.crea_SOFA as crea_SOFA_prior, 
+					c.max_vaso_days,
+					c.min_map,
+					c.cv_SOFA,
+					p.max_vaso_days as max_vaso_days_prior,
+					p.min_map as min_map_prior,
+					p.cv_SOFA as cv_SOFA_prior,
+					c.count_vent_mode,
+					c.min_pao2fio2_ratio,
+					c.pao2_resp_SOFA as pao2_resp_SOFA,
+					c.min_spo2fio2_ratio,
+					c.spo2_resp_SOFA as spo2_resp_SOFA,
+					GREATEST(c.pao2_resp_SOFA, c.spo2_resp_SOFA) as resp_SOFA,
+					p.count_vent_mode as count_vent_mode_prior,
+					p.min_pao2fio2_ratio as min_pao2fio2_ratio_prior,
+					p.pao2_resp_SOFA as pao2_resp_SOFA_prior,
+					p.min_spo2fio2_ratio as min_spo2fio2_ratio_prior,
+					p.spo2_resp_SOFA as spo2_resp_SOFA_prior,
+					GREATEST(p.pao2_resp_SOFA, p.spo2_resp_SOFA) as resp_SOFA_prior,
+					c.min_gcs,
+					c.gcs_SOFA,
+					p.min_gcs as min_gcs_prior,
+					p.gcs_SOFA as gcs_SOFA_prior,
+					c.min_urine_daily,
+					c.urine_SOFA,
+					p.min_urine_daily as min_urine_daily_prior,
+					p.urine_SOFA as urine_SOFA_prior,
+					c.max_lactate,
+					p.max_lactate as max_lactate_prior,
+					(c.plat_SOFA + c.bili_SOFA + c.crea_SOFA + c.cv_SOFA + GREATEST(c.pao2_resp_SOFA, c.spo2_resp_SOFA) + c.gcs_SOFA + c.urine_SOFA) AS SOFA_score_current,
+					(p.plat_SOFA + p.bili_SOFA + p.crea_SOFA + p.cv_SOFA + GREATEST(p.pao2_resp_SOFA, p.spo2_resp_SOFA) + p.gcs_SOFA + p.urine_SOFA) AS SOFA_score_prior,  
+					((c.plat_SOFA + c.bili_SOFA + c.crea_SOFA + c.cv_SOFA + GREATEST(c.pao2_resp_SOFA, c.spo2_resp_SOFA) + c.gcs_SOFA + c.urine_SOFA) - 
+					 (p.plat_SOFA + p.bili_SOFA + p.crea_SOFA + p.cv_SOFA + GREATEST(p.pao2_resp_SOFA, p.spo2_resp_SOFA) + p.gcs_SOFA + p.urine_SOFA)) AS SOFA_score_diff,
+					CASE 
+						WHEN (c.plat_SOFA + c.bili_SOFA + c.crea_SOFA + c.cv_SOFA + GREATEST(c.pao2_resp_SOFA, c.spo2_resp_SOFA) + c.gcs_SOFA + c.urine_SOFA) >=2 THEN "Yes" 
+						ELSE "No" 
+					END SOFA_current,
+					CASE 
+						WHEN (p.plat_SOFA + p.bili_SOFA + p.crea_SOFA + p.cv_SOFA + GREATEST(p.pao2_resp_SOFA, p.spo2_resp_SOFA) + p.gcs_SOFA + p.urine_SOFA) >=2 THEN "Yes" 
+						ELSE "No" 
+					END SOFA_prior,
+					CASE 
+						WHEN ((c.plat_SOFA + c.bili_SOFA + c.crea_SOFA + c.cv_SOFA + GREATEST(c.pao2_resp_SOFA, c.spo2_resp_SOFA) + c.gcs_SOFA + c.urine_SOFA) - 
+							  (p.plat_SOFA + p.bili_SOFA + p.crea_SOFA + p.cv_SOFA + GREATEST(p.pao2_resp_SOFA, p.spo2_resp_SOFA) + p.gcs_SOFA + p.urine_SOFA)) >=2 THEN "Yes" 
+						ELSE "No" 
+					END SOFA_diff,
+					c.vaso_shock, 
+					c.map_shock, 
+					c.lact_shock, 
+					(c.vaso_shock + c.map_shock + c.lact_shock) AS shock_score,
+					p.vaso_shock as vaso_shock_prior, 
+					p.map_shock as map_shock_prior, 
+					p.lact_shock as lact_shock_prior, 
+					(p.vaso_shock + p.map_shock + p.lact_shock ) as shock_score_prior,
+					CASE WHEN (c.vaso_shock + c.map_shock + c.lact_shock) = 2 THEN "Yes" ELSE "No" END shock,  
+					CASE WHEN (p.vaso_shock + p.map_shock + p.lact_shock) = 2 THEN "Yes" ELSE "No" END shock_prior,  
+					CASE WHEN ((c.vaso_shock + c.map_shock + c.lact_shock) - (p.vaso_shock + p.map_shock + p.lact_shock)) = 2 THEN "Yes" ELSE "No" END shock_diff, 
+					CASE WHEN c.plat_SOFA >= 2 THEN 1 ELSE 0 END plat_SOFA_GT2,
+					CASE WHEN c.bili_SOFA >= 2 THEN 1 ELSE 0 END bili_SOFA_GT2,
+					CASE WHEN c.crea_SOFA >= 2 THEN 1 ELSE 0 END crea_SOFA_GT2,
+					CASE WHEN c.cv_SOFA >= 2 THEN 1 ELSE 0 END cv_SOFA_GT2,
+					CASE WHEN GREATEST(c.pao2_resp_SOFA, c.spo2_resp_SOFA) >= 2 THEN 1 ELSE 0 END resp_SOFA_GT2,
+					CASE WHEN c.gcs_SOFA >= 2 THEN 1 ELSE 0 END gcs_SOFA_GT2,
+					CASE WHEN c.urine_SOFA >= 2 THEN 1 ELSE 0 END urine_SOFA_GT2,
+					CASE WHEN p.plat_SOFA >= 2 THEN 1 ELSE 0 END plat_SOFA_prior_GT2,
+					CASE WHEN p.bili_SOFA >= 2 THEN 1 ELSE 0 END bili_SOFA_prior_GT2,
+					CASE WHEN p.crea_SOFA >= 2 THEN 1 ELSE 0 END crea_SOFA_prior_GT2,
+					CASE WHEN p.cv_SOFA >= 2 THEN 1 ELSE 0 END cv_SOFA_prior_GT2,
+					CASE WHEN GREATEST(p.pao2_resp_SOFA, p.spo2_resp_SOFA) >= 2 THEN 1 ELSE 0 END resp_SOFA_prior_GT2,
+					CASE WHEN p.gcs_SOFA >= 2 THEN 1 ELSE 0 END gcs_SOFA_prior_GT2,
+					CASE WHEN p.urine_SOFA >= 2 THEN 1 ELSE 0 END urine_SOFA_prior_GT2,
+					CASE WHEN c.plat_SOFA - p.plat_SOFA >= 2 THEN 1 ELSE 0 END plat_SOFA_GT2_diff,
+					CASE WHEN c.bili_SOFA - p.bili_SOFA >= 2 THEN 1 ELSE 0 END bili_SOFA_GT2_diff,
+					CASE WHEN c.crea_SOFA - p.crea_SOFA >= 2 THEN 1 ELSE 0 END crea_SOFA_GT2_diff,
+					CASE WHEN c.cv_SOFA - p.cv_SOFA >= 2 THEN 1 ELSE 0 END cv_SOFA_GT2_diff,
+					CASE WHEN GREATEST(c.pao2_resp_SOFA, c.spo2_resp_SOFA) - GREATEST(p.pao2_resp_SOFA, p.spo2_resp_SOFA) >= 2 THEN 1 ELSE 0 END resp_SOFA_GT2_diff,
+					CASE WHEN c.gcs_SOFA - p.gcs_SOFA >= 2 THEN 1 ELSE 0 END gcs_SOFA_GT2_diff,
+					CASE WHEN c.urine_SOFA - p.urine_SOFA >= 2 THEN 1 ELSE 0 END urine_SOFA_GT2_diff,
+					CASE WHEN c.vaso_shock - p.vaso_shock = 1 THEN 1 ELSE 0 END vaso_shock_diff,
+					CASE WHEN c.map_shock - p.map_shock = 1 THEN 1 ELSE 0 END map_shock_diff,
+					CASE WHEN c.lact_shock - p.lact_shock = 1 THEN 1 ELSE 0 END lact_shock_diff
+					FROM 
+						{suspected_infection} as cohort
+					LEFT JOIN
+						{sepsis_sofa} as c USING (person_id, admit_date)
+					LEFT JOIN
+						{sepsis_sofa}_prior as p USING (person_id, admit_date)
+					ORDER BY
+						person_id, CAST(admit_date AS DATE)
 				'''
 		if not format_query:
 			pass
 		else:
 			query = query.format_map(
-						{**{"values_query":self.get_values_query(), 
-							"window_query":self.get_window_query(), 
-							"rollup_query":self.get_rollup_query()}, 
-							"sepsis_difference":self.config_dict['sepsis_difference']})
+							{**{"sepsis_difference": self.config_dict["sepsis_difference"],
+								"suspected_infection": self.config_dict["suspected_infection"],
+							    "sepsis_sofa": self.config_dict["sepsis_sofa"]}})
 			
 		if self.config_dict['print_query']:
 			print(query)
@@ -30,6 +129,7 @@ class SOFAScore:
 
 	def get_score_query(self, format_query=True, prior=False):
 		query = '''
+				CREATE OR REPLACE TABLE `{sepsis_sofa}` AS
 				SELECT 
                 susp_inf_rollup.person_id, 
                 CAST(susp_inf_rollup.admit_date AS DATE) AS admit_date, 
@@ -39,12 +139,12 @@ class SOFAScore:
                 index_date, 
                 min_platelet, 
                 CASE 
-                    WHEN min_platelet IS NULL THEN 0 
-                    WHEN min_platelet <20 THEN 4 
-                    WHEN min_platelet < 50 THEN 3
-                    WHEN min_platelet < 100 THEN 2 
-                    WHEN min_platelet < 150 THEN 1 
-                    ELSE 0 
+					WHEN min_platelet IS NULL THEN 0 
+					WHEN min_platelet < 20 THEN 4 
+					WHEN min_platelet < 50 THEN 3
+					WHEN min_platelet < 100 THEN 2 
+					WHEN min_platelet < 150 THEN 1 
+					ELSE 0
                 END plat_SOFA,
                 max_bilirubin, 
                 CASE 
@@ -57,35 +157,160 @@ class SOFAScore:
                 END bili_SOFA,
                 max_creatinine, 
                 CASE 
-                    WHEN max_creatinine IS NULL THEN 0 
-                    WHEN max_creatinine >= 5 THEN 4 
-                    WHEN max_creatinine >= 3.5 THEN 3
-                    WHEN max_creatinine >= 2 THEN 2 
-                    WHEN max_creatinine >= 1.2 THEN 1 
-                    ELSE 0 
+					WHEN susp_inf_rollup.age_in_months >= 216 THEN #  look into creatinine issue
+					(
+						CASE
+							WHEN max_creatinine IS NULL THEN 0 
+							WHEN max_creatinine >= 5 THEN 4 
+							WHEN max_creatinine >= 3.5 THEN 3
+							WHEN max_creatinine >= 2 THEN 2 
+							WHEN max_creatinine >= 1.2 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >= 144 THEN
+					(
+						CASE
+							WHEN max_creatinine IS NULL THEN 0 
+							WHEN max_creatinine >= 4.2 THEN 4 
+							WHEN max_creatinine >= 2.9 THEN 3
+							WHEN max_creatinine >= 1.7 THEN 2 
+							WHEN max_creatinine >= 1.0 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >= 60 THEN
+					(
+						CASE
+							WHEN max_creatinine IS NULL THEN 0 
+							WHEN max_creatinine >= 2.6 THEN 4 
+							WHEN max_creatinine >= 1.8 THEN 3
+							WHEN max_creatinine >= 1.1 THEN 2 
+							WHEN max_creatinine >= 0.7 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >= 24 THEN
+					(
+						CASE
+							WHEN max_creatinine IS NULL THEN 0 
+							WHEN max_creatinine >= 2.3 THEN 4 
+							WHEN max_creatinine >= 1.6 THEN 3
+							WHEN max_creatinine >= 0.9 THEN 2 
+							WHEN max_creatinine >= 0.6 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >= 12 THEN
+					(
+						CASE
+							WHEN max_creatinine IS NULL THEN 0 
+							WHEN max_creatinine >= 1.5 THEN 4 
+							WHEN max_creatinine >= 1.1 THEN 3
+							WHEN max_creatinine >= 0.6 THEN 2 
+							WHEN max_creatinine >= 0.4 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >= 1 THEN
+					(
+						CASE
+							WHEN max_creatinine IS NULL THEN 0 
+							WHEN max_creatinine >= 1.2 THEN 4 
+							WHEN max_creatinine >= 0.8 THEN 3
+							WHEN max_creatinine >= 0.5 THEN 2 
+							WHEN max_creatinine >= 0.3 THEN 1 
+							ELSE 0 
+						END
+					)
+					ELSE
+					(
+						CASE
+							WHEN max_creatinine IS NULL THEN 0 
+							WHEN max_creatinine >= 1.6 THEN 4 
+							WHEN max_creatinine >= 1.2 THEN 3
+							WHEN max_creatinine >= 1.0 THEN 2 
+							WHEN max_creatinine >= 0.8 THEN 1 
+							ELSE 0 
+						END
+					)
+				
                 END crea_SOFA,
                 max_vaso_days, 
                 min_map, 
                 CASE 
-                    WHEN max_vaso_days IS NOT NULL THEN 2
-                    WHEN min_map <70 THEN 1 
-                    ELSE 0 
+					WHEN susp_inf_rollup.age_in_months >=216 THEN
+					(
+						CASE
+							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN min_map <70 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >=144 THEN
+					(
+						CASE
+							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN min_map <67 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >=60 THEN
+					(
+						CASE
+							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN min_map <65 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >=24 THEN
+					(
+						CASE
+							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN min_map <62 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >=12 THEN
+					(
+						CASE
+							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN min_map <60 THEN 1 
+							ELSE 0 
+						END
+					)
+					WHEN susp_inf_rollup.age_in_months >=1 THEN
+					(
+						CASE
+							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN min_map <55 THEN 1 
+							ELSE 0 
+						END
+					)
+					ELSE
+					(
+						CASE
+							WHEN max_vaso_days IS NOT NULL THEN 2
+							WHEN min_map <46 THEN 1 
+							ELSE 0 
+						END
+					)
                 END cv_SOFA,
-                min_paO2fiO2_ratio,
-                min_spO2fiO2_ratio,
+                min_pao2fio2_ratio,
+                min_spo2fio2_ratio,
                 count_vent_mode, 
                 CASE 
-                    WHEN (count_vent_mode IS NOT NULL AND min_paO2fiO2_ratio < 100) THEN 4
-                    WHEN (count_vent_mode IS NOT NULL AND min_paO2fiO2_ratio < 200) THEN 3 
+                    WHEN (count_vent_mode IS NOT NULL AND min_pao2fio2_ratio < 100) THEN 4
+                    WHEN (count_vent_mode IS NOT NULL AND min_pao2fio2_ratio < 200) THEN 3 
                     WHEN min_paO2fiO2_ratio < 300 THEN 2 
                     WHEN min_paO2fiO2_ratio < 400 THEN 1
                     ELSE 0 
                 END pao2_resp_SOFA,
 				CASE 
-                    WHEN (count_vent_mode IS NOT NULL AND min_spO2fiO2_ratio < 148) THEN 4
-                    WHEN (count_vent_mode IS NOT NULL AND min_spO2fiO2_ratio < 221) THEN 3 
-                    WHEN min_spO2fiO2_ratio < 264 THEN 2 
-                    WHEN min_spO2fiO2_ratio < 292 THEN 1
+                    WHEN (count_vent_mode IS NOT NULL AND min_spo2fio2_ratio < 148) THEN 4
+                    WHEN (count_vent_mode IS NOT NULL AND min_spo2fio2_ratio < 221) THEN 3 
+                    WHEN min_spo2fio2_ratio < 264 THEN 2 
+                    WHEN min_spo2fio2_ratio < 292 THEN 1
                     ELSE 0 
                 END spo2_resp_SOFA,
                 min_gcs, 
@@ -123,12 +348,12 @@ class SOFAScore:
             LEFT JOIN {sepsis_creatinine} USING (person_id, admit_date)
             LEFT JOIN {sepsis_vasopressor} USING (person_id, admit_date)
             LEFT JOIN {sepsis_map} USING (person_id, admit_date)
-            LEFT JOIN {sepsis_paO2_fiO2} USING (person_id, admit_date)
+            LEFT JOIN {sepsis_pao2_fio2} USING (person_id, admit_date)
             LEFT JOIN {sepsis_vent} USING (person_id, admit_date)
             LEFT JOIN {sepsis_gcs} USING (person_id, admit_date)
             LEFT JOIN {sepsis_urine} USING (person_id, admit_date)
             LEFT JOIN {sepsis_lactate} USING (person_id, admit_date)
-            LEFT JOIN {sepsis_spO2_fiO2} USING (person_id, admit_date)
+            LEFT JOIN {sepsis_spo2_fio2} USING (person_id, admit_date)
             ORDER BY person_id, CAST(admit_date AS DATE)
 		'''
 		
@@ -136,45 +361,35 @@ class SOFAScore:
 			pass
 		else:
 			query = query.format_map(
-						{**{"sepsis_platelet":self.config_dict['sepsis_platelet'] + '_prior' if self.prior else self.config_dict['sepsis_platelet'],
-							"sepsis_creatinine":self.config_dict['sepsis_creatinine'] + '_prior' if self.prior else self.config_dict['sepsis_creatinine'],
-							"sepsis_gcs":self.config_dict['sepsis_gcs'] + '_prior' if self.prior else self.config_dict['sepsis_gcs'],
-							"sepsis_bilirubin":self.config_dict['sepsis_bilirubin'] + '_prior' if self.prior else self.config_dict['sepsis_bilirubin'],
-							"sepsis_vent":self.config_dict['sepsis_vent'] + '_prior' if self.prior else self.config_dict['sepsis_vent'],
-							"sepsis_lactate":self.config_dict['sepsis_lactate'] + '_prior' if self.prior else self.config_dict['sepsis_lactate'],
-							"sepsis_spo2_fio2":self.config_dict['sepsis_spo2_fio2'] + '_prior' if self.prior else self.config_dict['sepsis_spo2_fio2'],
-							"sepsis_vasopressor":self.config_dict['sepsis_vasopressor'] + '_prior' if self.prior else self.config_dict['sepsis_vasopressor'],
-							"sepsis_map":self.config_dict['sepsis_map'] + '_prior' if self.prior else self.config_dict['sepsis_map'],
-							"sepsis_urine":self.config_dict['sepsis_urine'] + '_prior' if self.prior else self.config_dict['sepsis_urine'],
-							"sepsis_pao2_fio2":self.config_dict['sepsis_pao2_fio2'] + '_prior' if self.prior else self.config_dict['sepsis_pao2_fio2']}})
+						{**{"suspected_infection":self.config_dict['suspected_infection'],
+							"sepsis_platelet":self.config_dict['sepsis_platelet'] + '_prior' if prior else self.config_dict['sepsis_platelet'],
+							"sepsis_creatinine":self.config_dict['sepsis_creatinine'] + '_prior' if prior else self.config_dict['sepsis_creatinine'],
+							"sepsis_gcs":self.config_dict['sepsis_gcs'] + '_prior' if prior else self.config_dict['sepsis_gcs'],
+							"sepsis_bilirubin":self.config_dict['sepsis_bilirubin'] + '_prior' if prior else self.config_dict['sepsis_bilirubin'],
+							"sepsis_vent":self.config_dict['sepsis_vent'] + '_prior' if prior else self.config_dict['sepsis_vent'],
+							"sepsis_lactate":self.config_dict['sepsis_lactate'] + '_prior' if prior else self.config_dict['sepsis_lactate'],
+							"sepsis_spo2_fio2":self.config_dict['sepsis_spo2_fio2'] + '_prior' if prior else self.config_dict['sepsis_spo2_fio2'],
+							"sepsis_vasopressor":self.config_dict['sepsis_vasopressor'] + '_prior' if prior else self.config_dict['sepsis_vasopressor'],
+							"sepsis_map":self.config_dict['sepsis_map'] + '_prior' if prior else self.config_dict['sepsis_map'],
+							"sepsis_urine":self.config_dict['sepsis_urine'] + '_prior' if prior else self.config_dict['sepsis_urine'],
+							"sepsis_pao2_fio2":self.config_dict['sepsis_pao2_fio2'] + '_prior' if prior else self.config_dict['sepsis_pao2_fio2'],
+						    "sepsis_sofa":self.config_dict["sepsis_sofa"] + '_prior' if prior else self.config_dict["sepsis_sofa"]}})
 			
 		if self.config_dict['print_query']:
 			print(query)
 			
-		if self.config_dict['save_sofa']:
-			self.db.execute_sql('''
-								CREATE OR REPLACE TABLE `{sepsis_sofa}` AS
-								{sofa_query}
-								'''.format_map({**{
-										"sepsis_sofa":self.config_dict["sepsis_sofa"] + '_prior' if self.prior else self.config_dict["sepsis_sofa"],
-										"sofa_query": query 
-									}}))
 		return query
-	def get_pediatric_query(self, prior=False):
-		raise NotImplementedError
 	
 	def run_score_queries(self):
 		self.db.execute_sql(self.get_score_query())
 		self.db.execute_sql(self.get_score_query(prior=True))
 	
-	def run_pediatric_queries(self):
-		self.db.execute_sql(self.get_pediatric_query())
-		self.db.execute_sql(self.get_pediatric_query(prior=True))
-	
-	def create_sofa_table(self):
-		self.run_score_queries()
-		self.run_pediatric_queries()
+	def run_difference_query(self):
 		self.db.execute_sql(self.get_difference_query())
+		
+	def create_sofa_tables(self):
+		self.run_score_queries()
+		self.run_difference_query()
 
 	def get_defaults(self):
 		return {

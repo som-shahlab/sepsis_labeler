@@ -290,8 +290,8 @@ class CreatinineComponent(Component):
 						measure.person_id, 
 						measure.measurement_DATETIME, 
 						case
-							when unit_concept_id = 8840 then value_as_number / 0.0113122 -- umol/l -> mg/dL
-							when unit_concept_id = 8837 then value_as_number * 0.001 / 0.0113122 -- ug/dL -> mg/dL
+							when unit_concept_id = 8749 then value_as_number / 0.0113122 -- umol/l -> mg/dL
+							when unit_concept_id = 8837 then value_as_number / 1000 -- ug/dL -> mg/dL
 							else value_as_number 
 						end as value_as_number, 
 						concept.concept_name AS measure_type  
@@ -1113,9 +1113,9 @@ class VasopressorComponent(Component):
 					SELECT 
 						vasopressor.*, 
 						concept.concept_name AS vasopressor_type  
-					FROM vassopressor_from_drug_exposure_via_ancestor AS vasopressor
+					FROM vasopressor_from_drug_exposure_via_ancestor AS vasopressor
 					INNER JOIN {dataset_project}.{dataset}.concept AS concept
-					ON vsaopressor.drug_concept_id = concept.concept_id
+					ON vasopressor.drug_concept_id = concept.concept_id
 				),
 				'''
 		if not format_query:
@@ -1142,10 +1142,11 @@ class VasopressorComponent(Component):
 						{window}
 				),
 				'''
+		
 		if not format_query:
 			return query
 		else:
-			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window']}})
+			return query.format_map({**self.config_dict,**{"window":self.config_dict['drug_window_prior'] if self.prior else self.config_dict['drug_window_curr']}})
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
@@ -1154,7 +1155,7 @@ class VasopressorComponent(Component):
 						person_id, 
 						admit_date, 
 						MAX(datetime_diff(vasopressor.drug_exposure_end_DATETIME, vasopressor.drug_exposure_start_DATETIME, DAY) + 1)
-					as max_vaso_days_prior
+					as max_vaso_days
 					FROM vasopressor_window as vasopressor 
 					GROUP BY person_id, admit_date
 				)
@@ -1393,7 +1394,7 @@ class UrineComponent(Component):
 
 	def get_rollup_query(self, format_query=True):
 		query = '''
-				urine_initial_rollup AS (
+				urine_output_initial_rollup AS (
 					(
 						SELECT 
 							person_id, 
@@ -1437,7 +1438,7 @@ class UrineComponent(Component):
 							adjust_hours
 						FROM urine_window 
 						LEFT JOIN urine_discharge_time USING (person_id)
-						WHERE CAST(urine_datetime AS DATE) = discharge_date) AND adjust_hours <> 0 
+						WHERE CAST(urine_datetime AS DATE) = discharge_date AND adjust_hours <> 0 
 						GROUP BY person_id, admit_date, discharge_date, CAST(urine_datetime AS DATE), ext_urine_datetime, adjust_hours
 					)
 					UNION ALL # THIS LAST BIT DEALS WITH DISCHARGE AT 0:00:00 HOURS
