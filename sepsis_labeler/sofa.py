@@ -13,6 +13,7 @@ class SOFAScore:
 					cohort.person_id, 
 					cohort.admit_date, 
 					cohort.discharge_date, 
+					cohort.sepsis_index_date,
 					c.min_platelet,
 					c.plat_SOFA,
 					p.min_platelet as min_platelet_prior,
@@ -142,7 +143,7 @@ class SOFAScore:
                 CAST(discharge_date AS DATE) AS discharge_date,
                 min_bc, 
                 min_systemic_abx, 
-                index_date, 
+                sepsis_index_date, 
                 min_platelet, 
                 CASE 
 					WHEN min_platelet IS NULL THEN 0 

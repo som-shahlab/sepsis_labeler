@@ -2,9 +2,10 @@ import os
 import pandas as pd
 from prediction_utils.extraction_utils.database import BQDatabase
 
-import * from sepsis_labeler.sofa as sofa
-import * from sepsis_labeler.component as component
-import STARRFlowsheetExtract from sepsis_labeler.starr_flowsheet_extract
+from sepsis_labeler.sofa import SOFAScore 
+from sepsis_labeler.cohort import SepsisAdmissionCohort
+from sepsis_labeler.component import * 
+from sepsis_labeler.starr_flowsheet_extract import STARRFlowsheetExtract 
 
 class SepsisLabeler:
 	
@@ -30,9 +31,11 @@ class SepsisLabeler:
 		
 		# create labelled cohort
 		df =  self.create_labelled_cohort()
+		
 		if self.verbose:
 			print('Finished!')	
-		if df:
+		if df is not None:
+			print('Returning labels as dataframe...')
 			return df
 	
 	def extract_flowsheets(self):
@@ -44,35 +47,40 @@ class SepsisLabeler:
 	def create_cohort(self):
 		if self.config_dict['pre_existing_cohort']:
 			if self.verbose:
-				print(f'Using pre-existing admission cohort: {self.config_dict["admission_rollup"]}')
+				print(f'Using pre-existing admission cohort: {self.config_dict["cohort_name"]}')
 		else:
 			if self.verbose:
 				print(f'Creating admission cohort: {self.config_dict["admission_rollup"]}')
-			SepsisAdmissionCohort(**config_dict).create_cohort_table()
+			SepsisAdmissionCohort(**self.config_dict).create_cohort_table()
 			if self.verbose:
 				print(f'Admission cohort created...')
 	
 	def create_sofa(self):
 		if self.verbose:
 				print(f'Creating SOFA scores...')
-		SOFAScore(**config_dict).create_sofa_tables()
+		SOFAScore(**self.config_dict).create_sofa_tables()
 	
 	def create_labelled_cohort(self):
 		if self.verbose:
 			print('Adding SEPSIS label to cohort...')
+		if self.config_dict["replace_cohort"]:
+			cohort_name = self.config_dict['admission_rollup']
+		else:
+			cohort_name = f"{self.config_dict['admission_rollup']}_labeled"
 		query = '''
 				{save_query}
-				SELECT adm.*, 
+				SELECT adm.*,
+				sep.sepsis_index_date,
 				CASE
 					WHEN sep.sofa_diff = "Yes" THEN 1
 					ELSE 0
 				END sepsis
 				FROM
 				{admission_rollup} adm
-				LEFT JOIN {sepsis_difference} sep on sep.person_id = adm.person_id and sep.admit_date = adm.admit_date
+				LEFT JOIN {sepsis_difference} sep on sep.person_id = adm.person_id and sep.admit_date = CAST(adm.admit_date as DATE)
 				'''
 		query = query.format_map({**self.config_dict,
-								  **{"save_query": f"CREATE OR REPLACE TABLE `{self.config_dict['admission_rollup']}_labeled` AS" if self.config_dict["save_to_database"] else ""}
+								  **{"save_query": f"CREATE OR REPLACE TABLE `{cohort_name}` AS" if self.config_dict["save_to_database"] else ""}
 								 })
 		if not self.config_dict["save_to_database"]:
 			return pd.read_gbq(query, dialect='standard')
@@ -206,30 +214,39 @@ class SepsisLabeler:
 			"pre_existing_cohort":None,
 			"extract_flowsheet":False,
 			"save_to_database":True,
-			"meas_window_prior":'''DATE_SUB(CAST(index_date AS DATE), INTERVAL 2 DAY) > CAST(measurement_DATETIME AS DATE) AND
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) <= CAST(measurement_DATETIME AS DATE)''',
-			"meas_window":'''CAST(index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-								  CAST(index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)''',
-			"obs_window_prior":'''DATE_SUB(CAST(index_date AS DATE), INTERVAL 2 DAY) > CAST(observation_DATETIME AS DATE) AND
-								  DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) <= CAST(observation_DATETIME AS DATE)''',
-			"obs_window":'''CAST(index_date AS DATE) >= CAST(DATETIME_SUB(observation_DATETIME, INTERVAL 2 DAY) AS DATE) AND
-								 CAST(index_date AS DATE) <= CAST(DATETIME_ADD(observation_DATETIME, INTERVAL 1 DAY) AS DATE)''',
-			"drug_window_prior":'''(DATE_SUB(CAST(index_date AS DATE), INTERVAL 3 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 4 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 5 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 6 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 7 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 8 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 9 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								   DATE_SUB(CAST(index_date AS DATE), INTERVAL 10 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE))''',
-			"drug_window":'''(CAST(index_date AS DATE) BETWEEN CAST(drug_exposure_start_DATETIME AS DATE) AND CAST(drug_exposure_end_DATETIME AS DATE) OR
-								  CAST(DATETIME_ADD(index_date, INTERVAL 1 DAY) AS DATE) BETWEEN CAST(drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-							      CAST(DATETIME_SUB(index_date, INTERVAL 1 DAY) AS DATE) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
-								  CAST(DATETIME_SUB(index_date, INTERVAL 2 DAY) AS DATE) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE))'''
+			"replace_cohort":True,
+			"meas_window_prior":'''DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 2 DAY) > CAST(measurement_DATETIME AS DATE) AND
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 10 DAY) <= CAST(measurement_DATETIME AS DATE)''',
+			"meas_window":'''CAST(sepsis_index_date AS DATE) >= CAST(DATETIME_SUB(measurement_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+								  CAST(sepsis_index_date AS DATE) <= CAST(DATETIME_ADD(measurement_DATETIME, INTERVAL 1 DAY) AS DATE)''',
+			"obs_window_prior":'''DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 2 DAY) > CAST(observation_DATETIME AS DATE) AND
+								  DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 10 DAY) <= CAST(observation_DATETIME AS DATE)''',
+			"obs_window":'''CAST(sepsis_index_date AS DATE) >= CAST(DATETIME_SUB(observation_DATETIME, INTERVAL 2 DAY) AS DATE) AND
+								 CAST(sepsis_index_date AS DATE) <= CAST(DATETIME_ADD(observation_DATETIME, INTERVAL 1 DAY) AS DATE)''',
+			"drug_window_prior":'''(DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 3 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 4 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 5 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 6 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 7 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 8 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 9 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								   DATE_SUB(CAST(sepsis_index_date AS DATE), INTERVAL 10 DAY) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE))''',
+			"drug_window":'''(CAST(sepsis_index_date AS DATE) BETWEEN CAST(drug_exposure_start_DATETIME AS DATE) AND CAST(drug_exposure_end_DATETIME AS DATE) OR
+								  CAST(DATETIME_ADD(sepsis_index_date, INTERVAL 1 DAY) AS DATE) BETWEEN CAST(drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+							      CAST(DATETIME_SUB(sepsis_index_date, INTERVAL 1 DAY) AS DATE) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE) OR
+								  CAST(DATETIME_SUB(sepsis_index_date, INTERVAL 2 DAY) AS DATE) BETWEEN CAST (drug_exposure_start_DATETIME AS DATE) AND CAST (drug_exposure_end_DATETIME AS DATE))'''
 		}
 		
-		cohort_names = {
-			"admission_rollup": "sepsis_admission_rollup",
+		return config_dict
+
+	def override_defaults(self, **kwargs):
+		return {**self.get_defaults(), **kwargs}
+
+	def get_config_dict(self, **kwargs):
+		config_dict = self.override_defaults(**kwargs)
+		
+		table_names = {
+			"admission_rollup": config_dict['cohort_name'] if config_dict['pre_existing_cohort'] else "sepsis_admission_rollup",
 			"suspected_infection": "sepsis_susp_inf_rollup",
 			"sepsis_platelet": "sepsis_platelet_rollup",
 			"sepsis_creatinine": "sepsis_creatinine_rollup",
@@ -248,19 +265,14 @@ class SepsisLabeler:
 			"sepsis_sofa":"sepsis_sofa_score",
 			"sepsis_difference": "sepsis_sofa_difference"
 		}
-		cohort_names_long = {
-			key: "{rs_dataset_project}.{rs_dataset}.{cohort_name}".format(
-				cohort_name=value, **config_dict
+		table_names_long = {
+			key: "{rs_dataset_project}.{rs_dataset}.{table_name}".format(
+				table_name=value, **config_dict
 			)
-			for key, value in cohort_names.items()
+			for key, value in table_names.items()
 		}
-		return {**config_dict, **cohort_names_long}
-
-	def override_defaults(self, **kwargs):
-		return {**self.get_defaults(), **kwargs}
-
-	def get_config_dict(self, **kwargs):
-		config_dict = self.override_defaults(**kwargs)
+		
+		config_dict = {**config_dict, **table_names_long}
 
 		# Handle special parameters
 		config_dict["limit_str"] = (

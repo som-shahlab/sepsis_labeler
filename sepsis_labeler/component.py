@@ -143,7 +143,7 @@ class SuspectedInfectionComponent(Component):
 					MIN(discharge_datetime) as discharge_datetime,
 					MIN(bc_DATETIME) as min_bc,
 					MIN(drug_exposure_start_DATETIME) as min_systemic_abx,
-					LEAST(MIN(bc_DATETIME),MIN(drug_exposure_start_DATETIME)) as index_date
+					LEAST(MIN(bc_DATETIME),MIN(drug_exposure_start_DATETIME)) as sepsis_index_date
 				FROM susp_inf_window 
 				GROUP BY person_id, admit_date, admit_datetime, age_in_months
 				ORDER BY person_id, admit_date, admit_datetime, age_in_months
@@ -224,7 +224,7 @@ class PlateletComponent(Component):
 						susp_inf_rollup.*, 
 						platelet.measurement_DATETIME AS platelet_date, 
 						platelet.value_as_number,
-						datetime_diff(platelet.measurement_DATETIME, index_date, DAY) as days_plat_index
+						datetime_diff(platelet.measurement_DATETIME, sepsis_index_date, DAY) as days_plat_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN platelet_from_measurement AS platelet USING (person_id)
 					WHERE
@@ -326,7 +326,7 @@ class CreatinineComponent(Component):
 						susp_inf_rollup.*, 
 						creatinine.measurement_DATETIME AS creatinine_date, 
 						creatinine.value_as_number,
-						datetime_diff(creatinine.measurement_DATETIME, index_date, DAY) as days_crea_index
+						datetime_diff(creatinine.measurement_DATETIME, sepsis_index_date, DAY) as days_crea_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN creatinine_from_measurement AS creatinine USING (person_id)
 					WHERE
@@ -410,7 +410,7 @@ class GlasgowComaScaleComponent(Component):
 						susp_inf_rollup.*, 
 						gcs.measurement_DATETIME AS gcs_date, 
 						gcs.value_as_number,
-						datetime_diff(gcs.measurement_DATETIME, index_date, DAY) as days_gcs_index
+						datetime_diff(gcs.measurement_DATETIME, sepsis_index_date, DAY) as days_gcs_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN gcs_from_measurement AS gcs USING (person_id)
 					WHERE
@@ -508,7 +508,7 @@ class BilirubinComponent(Component):
 						susp_inf_rollup.*, 
 						bilirubin.measurement_DATETIME AS bilirubin_date, 
 						bilirubin.value_as_number,
-						datetime_diff(bilirubin.measurement_DATETIME, index_date, DAY) as days_bili_index
+						datetime_diff(bilirubin.measurement_DATETIME, sepsis_index_date, DAY) as days_bili_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN bilirubin_from_measurement AS bilirubin USING (person_id)
 					WHERE
@@ -592,12 +592,12 @@ class MechanicalVentilationComponent(Component):
 						susp_inf_rollup.*, 
 						mech_vent.observation_datetime AS mech_vent_datetime, 
 						mech_vent.meas_value as vent_mode,
-						datetime_diff(mech_vent.observation_datetime, index_date, DAY) as days_mech_vent_index
+						datetime_diff(mech_vent.observation_datetime, sepsis_index_date, DAY) as days_mech_vent_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN mech_vent_from_flowsheet AS mech_vent USING (person_id)
 					WHERE
 						{window}
-					ORDER BY  person_id, admit_date, index_date, observation_datetime 
+					ORDER BY  person_id, admit_date, sepsis_index_date, observation_datetime 
 				),
 				'''
 		if not format_query:
@@ -695,7 +695,7 @@ class LactateComponent(Component):
 						susp_inf_rollup.*, 
 						lactate.measurement_DATETIME AS lactate_date, 
 						lactate.value_as_number,
-						datetime_diff(lactate.measurement_DATETIME, index_date, DAY) as days_lact_index
+						datetime_diff(lactate.measurement_DATETIME, sepsis_index_date, DAY) as days_lact_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN lactate_from_measurement AS lactate USING (person_id)
 					WHERE
@@ -802,7 +802,7 @@ class PaO2FiO2Component(Component):
 						susp_inf_rollup.*, 
 						paO2.measurement_DATETIME AS paO2_datetime, 
 						paO2.value_as_number as paO2,
-						datetime_diff(paO2.measurement_DATETIME, index_date, DAY) as days_paO2_index
+						datetime_diff(paO2.measurement_DATETIME, sepsis_index_date, DAY) as days_paO2_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN paO2_from_measurement AS paO2
 					USING (person_id)
@@ -815,10 +815,10 @@ class PaO2FiO2Component(Component):
 						min_bc, 
 						min_systemic_abx, 
 						susp_inf_rollup.admit_date, 
-						index_date, 
+						sepsis_index_date, 
 						CAST(observation_datetime AS DATETIME) AS fiO2_datetime, 
 						fiO2, 
-						datetime_diff(CAST(observation_datetime AS DATETIME), index_date, DAY) as days_fiO2_index
+						datetime_diff(CAST(observation_datetime AS DATETIME), sepsis_index_date, DAY) as days_fiO2_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN fiO2_from_flowsheet as flowsheet
 					ON susp_inf_rollup.person_id = flowsheet.person_id
@@ -830,7 +830,7 @@ class PaO2FiO2Component(Component):
 					SELECT 
 						paO2_window.person_id, 
 						paO2_window.admit_date, 
-						paO2_window.index_date, 
+						paO2_window.sepsis_index_date, 
 						fiO2, 
 						fiO2_datetime, 
 						paO2, 
@@ -839,7 +839,7 @@ class PaO2FiO2Component(Component):
 						datetime_diff(paO2_datetime, fiO2_datetime, MINUTE) as minutes_fiO2_paO2
 					FROM fiO2_window AS fiO2_window
 					INNER JOIN paO2_window AS paO2_window
-					USING (person_id, index_date)
+					USING (person_id, sepsis_index_date)
 					WHERE CAST(fiO2_datetime AS DATETIME)<= paO2_datetime 
 				),
 				'''
@@ -870,7 +870,7 @@ class PaO2FiO2Component(Component):
 						initial_rollup.admit_date, 
 						initial_rollup.paO2_datetime, 
 						initial_rollup.minutes_fiO2_paO2,
-						index_date, 
+						sepsis_index_date, 
 						fiO2, fiO2_datetime, paO2, paO2fiO2_ratio
 					FROM paO2_fiO2_initial_rollup AS initial_rollup
 					LEFT JOIN paO2_fiO2_window AS combined_window
@@ -972,10 +972,10 @@ class SpO2FiO2Component(Component):
 						min_bc, 
 						min_systemic_abx, 
 						susp_inf_rollup.admit_date, 
-						index_date, 
+						sepsis_index_date, 
 						CAST(observation_datetime AS DATETIME) AS spO2_datetime, 
 						meas_value as spO2, 
-						datetime_diff(CAST(observation_datetime AS DATETIME), index_date, DAY) as days_spO2_index
+						datetime_diff(CAST(observation_datetime AS DATETIME), sepsis_index_date, DAY) as days_spO2_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN spO2_from_flowsheet as flowsheet
 					ON susp_inf_rollup.person_id = flowsheet.person_id
@@ -989,10 +989,10 @@ class SpO2FiO2Component(Component):
 						min_bc, 
 						min_systemic_abx, 
 						susp_inf_rollup.admit_date, 
-						index_date, 
+						sepsis_index_date, 
 						CAST(observation_datetime AS DATETIME) AS fiO2_datetime, 
 						fiO2, 
-						datetime_diff(CAST(observation_datetime AS DATETIME), index_date, DAY) as days_fiO2_index
+						datetime_diff(CAST(observation_datetime AS DATETIME), sepsis_index_date, DAY) as days_fiO2_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN fiO2_from_flowsheet as flowsheet
 					ON susp_inf_rollup.person_id = flowsheet.person_id
@@ -1004,7 +1004,7 @@ class SpO2FiO2Component(Component):
 					SELECT 
 						spO2_window.person_id, 
 						spO2_window.admit_date, 
-						spO2_window.index_date, 
+						spO2_window.sepsis_index_date, 
 						fiO2, 
 						fiO2_datetime, 
 						spO2, 
@@ -1013,7 +1013,7 @@ class SpO2FiO2Component(Component):
 						datetime_diff(spO2_datetime, fiO2_datetime, MINUTE) as minutes_fiO2_spO2
 					FROM fiO2_window AS fiO2_window
 					INNER JOIN spO2_window AS spO2_window
-					USING (person_id, index_date)
+					USING (person_id, sepsis_index_date)
 					WHERE CAST(fiO2_datetime AS DATETIME)<= spO2_datetime 
 				),
 				'''
@@ -1039,7 +1039,7 @@ class SpO2FiO2Component(Component):
 						initial_rollup.admit_date, 
 						initial_rollup.spO2_datetime, 
 						initial_rollup.minutes_fiO2_spO2,
-						index_date, 
+						sepsis_index_date, 
 						fiO2, 
 						fiO2_datetime, 
 						spO2, 
@@ -1130,11 +1130,11 @@ class DopamineComponent(Component):
 					SELECT 
 						susp_inf_rollup.person_id, 
 						susp_inf_rollup.admit_date, 
-						susp_inf_rollup.index_date,
+						susp_inf_rollup.sepsis_index_date,
 						dopamine.drug_exposure_start_DATETIME, 
 						dopamine.drug_exposure_end_DATETIME,
-						datetime_diff(dopamine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_dopamine_start,
-						datetime_diff(dopamine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_dopamine_end,
+						datetime_diff(dopamine.drug_exposure_start_DATETIME, sepsis_index_date, DAY) as days_index_dopamine_start,
+						datetime_diff(dopamine.drug_exposure_end_DATETIME, sepsis_index_date, DAY) as days_index_dopamine_end,
 						(datetime_diff(dopamine.drug_exposure_end_DATETIME, dopamine.drug_exposure_start_DATETIME, DAY) + 1) as days_dopamine
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN dopamine_from_drug_exposure_with_name AS dopamine
@@ -1233,11 +1233,11 @@ class DobutamineComponent(Component):
 					SELECT 
 						susp_inf_rollup.person_id, 
 						susp_inf_rollup.admit_date, 
-						susp_inf_rollup.index_date,
+						susp_inf_rollup.sepsis_index_date,
 						dobutamine.drug_exposure_start_DATETIME, 
 						dobutamine.drug_exposure_end_DATETIME,
-						datetime_diff(dobutamine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_dobutamine_start,
-						datetime_diff(dobutamine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_dobutamine_end,
+						datetime_diff(dobutamine.drug_exposure_start_DATETIME, sepsis_index_date, DAY) as days_index_dobutamine_start,
+						datetime_diff(dobutamine.drug_exposure_end_DATETIME, sepsis_index_date, DAY) as days_index_dobutamine_end,
 						(datetime_diff(dobutamine.drug_exposure_end_DATETIME, dobutamine.drug_exposure_start_DATETIME, DAY) + 1) as days_dobutamine
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN dobutamine_from_drug_exposure_with_name AS dobutamine
@@ -1336,11 +1336,11 @@ class EpinephrineComponent(Component):
 					SELECT 
 						susp_inf_rollup.person_id, 
 						susp_inf_rollup.admit_date, 
-						susp_inf_rollup.index_date,
+						susp_inf_rollup.sepsis_index_date,
 						epinephrine.drug_exposure_start_DATETIME, 
 						epinephrine.drug_exposure_end_DATETIME,
-						datetime_diff(epinephrine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_epinephrine_start,
-						datetime_diff(epinephrine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_epinephrine_end,
+						datetime_diff(epinephrine.drug_exposure_start_DATETIME, sepsis_index_date, DAY) as days_index_epinephrine_start,
+						datetime_diff(epinephrine.drug_exposure_end_DATETIME, sepsis_index_date, DAY) as days_index_epinephrine_end,
 						(datetime_diff(epinephrine.drug_exposure_end_DATETIME, epinephrine.drug_exposure_start_DATETIME, DAY) + 1) as days_epinephrine
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN epinephrine_from_drug_exposure_with_name AS epinephrine
@@ -1439,11 +1439,11 @@ class NorepinephrineComponent(Component):
 					SELECT 
 						susp_inf_rollup.person_id, 
 						susp_inf_rollup.admit_date, 
-						susp_inf_rollup.index_date,
+						susp_inf_rollup.sepsis_index_date,
 						norepinephrine.drug_exposure_start_DATETIME, 
 						norepinephrine.drug_exposure_end_DATETIME,
-						datetime_diff(norepinephrine.drug_exposure_start_DATETIME, index_date, DAY) as days_index_norepinephrine_start,
-						datetime_diff(norepinephrine.drug_exposure_end_DATETIME, index_date, DAY) as days_index_norepinephrine_end,
+						datetime_diff(norepinephrine.drug_exposure_start_DATETIME, sepsis_index_date, DAY) as days_index_norepinephrine_start,
+						datetime_diff(norepinephrine.drug_exposure_end_DATETIME, sepsis_index_date, DAY) as days_index_norepinephrine_end,
 						(datetime_diff(norepinephrine.drug_exposure_end_DATETIME, norepinephrine.drug_exposure_start_DATETIME, DAY) + 1) as days_norepinephrine
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN norepinephrine_from_drug_exposure_with_name AS norepinephrine
@@ -1532,7 +1532,7 @@ class MeanArterialPressureComponent(Component):
 						susp_inf_rollup.*, 
 						mapm.measurement_DATETIME AS map_datetime,
 						mapm.value_as_number AS map,
-						datetime_diff(mapm.measurement_DATETIME, index_date, DAY) as days_map_index
+						datetime_diff(mapm.measurement_DATETIME, sepsis_index_date, DAY) as days_map_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN mean_arterial_pressure_from_measurement as mapm
 						ON susp_inf_rollup.person_id = mapm.person_id
@@ -1629,7 +1629,7 @@ class UrineComponent(Component):
 						susp_inf_rollup.*, 
 						urine.measurement_DATETIME AS urine_datetime, 
 						urine.value_as_number AS urine_volume,
-						datetime_diff(measurement_DATETIME, index_date, DAY) as days_urine_index
+						datetime_diff(measurement_DATETIME, sepsis_index_date, DAY) as days_urine_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN urine_from_measurement as urine
 						ON susp_inf_rollup.person_id = urine.person_id 
@@ -1642,7 +1642,7 @@ class UrineComponent(Component):
 						susp_inf_rollup.*, 
 						urine.measurement_DATETIME AS urine_datetime, 
 						urine.value_as_number AS urine_volume,
-						datetime_diff(measurement_DATETIME, index_date, DAY) as days_urine_index
+						datetime_diff(measurement_DATETIME, sepsis_index_date, DAY) as days_urine_index
 					FROM {suspected_infection} AS susp_inf_rollup
 					LEFT JOIN urine_24_from_measurement as urine
 						ON susp_inf_rollup.person_id = urine.person_id 
